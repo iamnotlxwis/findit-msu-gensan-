@@ -990,26 +990,43 @@ async function startFindIt() {
     });
     const connectionCheck = await supabase.from("items").select("id", { head: true, count: "exact" }).limit(1);
     if (connectionCheck.error) throw connectionCheck.error;
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Keep this callback synchronous. Supabase auth callbacks must not await
+    // other Supabase requests because they can block the auth lock/session flow.
+    supabase.auth.onAuthStateChange((_event, session) => {
       currentUser = session?.user || null;
       currentProfile = null;
       currentRole = null;
-      if (notificationChannel) {
-        await supabase.removeChannel(notificationChannel);
-        notificationChannel = null;
-      }
-      if (currentUser) {
+      header();
+      render();
+
+      Promise.resolve().then(async () => {
+        if (notificationChannel) {
+          await supabase.removeChannel(notificationChannel);
+          notificationChannel = null;
+        }
+        if (!currentUser) return;
+
+        const userId = currentUser.id;
         const [profileResult, roleResult] = await Promise.all([
-          supabase.from("profiles").select("display_name,is_suspended,reputation_points,successful_returns").eq("id", currentUser.id).maybeSingle(),
-          supabase.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle()
+          supabase.from("profiles")
+            .select("display_name,is_suspended,reputation_points,successful_returns")
+            .eq("id", userId).maybeSingle(),
+          supabase.from("user_roles").select("role")
+            .eq("user_id", userId).maybeSingle()
         ]);
+
+        // Ignore stale results if the user signed out or switched accounts.
+        if (!currentUser || currentUser.id !== userId) return;
         if (!profileResult.error) currentProfile = profileResult.data;
         if (!roleResult.error) currentRole = roleResult.data?.role || null;
         subscribeNotifications();
         if (auth?.open) auth.close();
-      }
-      header();
-      render();
+        header();
+        render();
+      }).catch(error => {
+        console.error("FindIt auth state update failed:", error);
+        errorAt("#authError", "Signed in, but your profile could not be loaded: " + error.message);
+      });
     });
 
     setTheme(localStorage.getItem("finditTheme") || "light");
