@@ -252,6 +252,28 @@ $("#logout")?.addEventListener("click", signOut);
 });
 $("#postForm")?.addEventListener("submit", createItem);
 $("#claimForm")?.addEventListener("submit", submitClaim);
+$("#itemPhoto")?.addEventListener("change", () => {
+  const file = $("#itemPhoto").files[0];
+  $("#fileName").textContent = file ? file.name : "No file selected";
+  $("#uploadZone")?.classList.toggle("has-file", !!file);
+});
+const uploadZone = $("#uploadZone");
+uploadZone?.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  uploadZone.classList.add("dragging");
+});
+uploadZone?.addEventListener("dragleave", () => uploadZone.classList.remove("dragging"));
+uploadZone?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  uploadZone.classList.remove("dragging");
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  $("#itemPhoto").files = transfer.files;
+  $("#itemPhoto").dispatchEvent(new Event("change", { bubbles: true }));
+});
+
 search?.addEventListener("input", render);
 document.querySelectorAll(".filter").forEach((button) => {
   button.addEventListener("click", () => {
