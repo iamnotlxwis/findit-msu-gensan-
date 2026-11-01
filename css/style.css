@@ -193,28 +193,14 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:#df91b1!important
 .card-actions button{border-radius:10px}
 .card:focus-within{outline:3px solid rgba(216,95,145,.16);outline-offset:2px}
 
-/* FindIt 2.0: roomier layout, gallery, preferences and dark mode */
-:root{--content:1380px}
-.site-header{padding-left:max(3%,calc((100% - var(--content))/2));padding-right:max(3%,calc((100% - var(--content))/2));gap:30px}
-.hero,.stats-section,.browse-section,.how-section,.community-banner{max-width:var(--content)}
-.hero{padding-left:clamp(28px,5vw,76px);padding-right:clamp(28px,5vw,76px);gap:7%;grid-template-columns:1.08fr .92fr}
-.browse-section,.how-section{padding-left:clamp(24px,5vw,72px);padding-right:clamp(24px,5vw,72px)}
-.stats-section{padding-left:clamp(24px,5vw,72px);padding-right:clamp(24px,5vw,72px)}
-.listing-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
-.browse-toolbar{gap:14px;flex-wrap:wrap}
-.search-box{min-width:280px;flex:1}
-.category-filter{min-width:145px}
-.modal{max-width:620px;padding:38px}
-.account-modal{max-width:980px}
-.photo-previews{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.photo-previews img{width:76px;height:76px;object-fit:cover;border-radius:12px;border:1px solid var(--line)}
-.detail-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:22px}
-.detail-gallery .detail-image{width:100%;height:220px;object-fit:cover;border-radius:16px}
-.preference-check{display:flex!important;align-items:center;gap:10px}
-.admin-setting,.admin-export{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 24px}
-.admin-setting input{max-width:120px}
-.reputation-card{padding:28px;border:1px solid var(--line);border-radius:20px;background:var(--white);text-align:center}
-.reputation-score{font-size:52px;font-weight:800;color:var(--pink)}
+/* FindIt signature: a campus noticeboard, not a generic marketplace */
+.hero-copy{position:relative}
+.hero-copy:before{content:"MSU • GENSAN";display:inline-block;margin:0 0 16px;padding:6px 10px;border:1px dashed #e7b4c9;border-radius:4px;color:#b65c82;font:700 9px/1 "DM Sans",sans-serif;letter-spacing:1.8px;transform:rotate(-2deg)}
+.visual-board{position:relative}
+.visual-board:after{content:"FOUND / LOST / RETURNED";display:block;margin-top:13px;padding-top:10px;border-top:1px dashed rgba(190,117,151,.35);color:#b57b94;font:700 8px/1.2 "DM Sans",sans-serif;letter-spacing:1.5px;text-align:center}
+.card .visual:after{content:"FINDIT • CAMPUS NOTE";position:absolute;right:12px;bottom:10px;padding:5px 7px;border:1px solid rgba(216,95,145,.18);border-radius:4px;background:rgba(255,255,255,.88);color:#a66a85;font:700 7px/1 "DM Sans",sans-serif;letter-spacing:1px}
+.browse-toolbar{align-items:center;row-gap:12px}
+@media(min-width:901px){.browse-toolbar{display:flex;flex-wrap:wrap}.browse-toolbar .search-box{flex:1 1 360px;min-width:260px}.browse-toolbar .filter-group{flex:0 0 auto}.browse-toolbar .category-filter{flex:0 1 160px;min-width:130px}}
 html[data-theme="dark"]{color-scheme:dark;--ink:#f5edf2;--muted:#b8aab4;--pink-soft:#382333;--line:#463642;--white:#211b24;--bg:#17131a;--shadow:0 18px 50px rgba(0,0,0,.28)}
 html[data-theme="dark"] body{background:var(--bg);color:var(--ink)}
 html[data-theme="dark"] .site-header{background:rgba(31,25,34,.92);border-color:#3d303d}
@@ -223,5 +209,3 @@ html[data-theme="dark"] .stat-card,html[data-theme="dark"] .card,html[data-theme
 html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#19151c;color:var(--ink);border-color:#493b48}
 html[data-theme="dark"] .button-secondary{background:#302431;color:#f1b5ce;border-color:#574153}
 html[data-theme="dark"] .browse-bottom,html[data-theme="dark"] .hero-description,html[data-theme="dark"] .section-heading p{color:#b7a7b3}
-@media(max-width:900px){.site-header{height:auto;min-height:72px;padding:12px 4%;flex-wrap:wrap}.desktop-nav{order:3;width:100%;justify-content:center}.header-actions{gap:4px;flex-wrap:wrap;justify-content:flex-end}.hero{grid-template-columns:1fr;padding-top:58px}.hero-visual{height:310px}.listing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.site-header{align-items:flex-start}.header-actions{width:100%;justify-content:space-between}.user-label{display:none}.desktop-nav{gap:20px}.hero h1{letter-spacing:-3px}.hero-actions .button{width:100%}.listing-grid{grid-template-columns:1fr;gap:16px}.browse-toolbar{display:grid;grid-template-columns:1fr 1fr}.search-box{grid-column:1/-1;min-width:0}.filter-group{grid-column:1/-1}.category-filter{width:100%;min-width:0}.detail-gallery{grid-template-columns:1fr}.detail-gallery .detail-image{height:210px}.modal{padding:28px 22px}}
