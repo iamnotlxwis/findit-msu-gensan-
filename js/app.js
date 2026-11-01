@@ -42,7 +42,7 @@ function esc(value = "") {
 function header() {
   if ($("#login")) $("#login").hidden = !!currentUser;
   if ($("#logout")) $("#logout").hidden = !currentUser;
-  if ($("#userLabel")) $("#userLabel").textContent =
+  if ($("#account")) $("#account").hidden = !currentUser;\n  if ($("#userLabel")) $("#userLabel").textContent =
     currentProfile?.display_name || currentUser?.email || "";
 }
 function openLogin() {
@@ -100,7 +100,82 @@ function render() {
   });
 }
 
-async function loadSavedItems() {
+
+const accountDialog = $("#accountDialog");
+let accountData = { posts: [], claims: [], saved: [] };
+let accountTab = "posts";
+
+function statusLabel(status) {
+  return String(status || "unknown").replace(/_/g, " ").replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+}
+function accountRow(title, detail, status, date) {
+  return '<article class="activity-row"><div><strong>' + esc(title) + '</strong><small>' + esc(detail || "") + '</small></div><div class="activity-side"><span class="activity-status">' + esc(statusLabel(status)) + '</span><small>' + esc(date ? new Date(date).toLocaleDateString() : "") + '</small></div></article>';
+}
+function renderAccountTab() {
+  const target = $("#accountContent");
+  if (!target) return;
+  const rows = accountData[accountTab] || [];
+  if (!rows.length) {
+    const messages = { posts: "You haven't posted any items yet.", claims: "You haven't submitted any claims yet.", saved: "You haven't saved any listings yet." };
+    target.innerHTML = '<div class="account-empty"><span>♡</span><p>' + messages[accountTab] + '</p></div>';
+    return;
+  }
+  if (accountTab === "posts") {
+    target.innerHTML = rows.map((item) => accountRow(item.title, item.item_type.toUpperCase() + " · " + item.campus_location, item.status, item.created_at)).join("");
+  } else if (accountTab === "claims") {
+    target.innerHTML = rows.map((claim) => accountRow(claim.items?.title || "Campus item", claim.items?.item_type?.toUpperCase() + " · " + claim.message, claim.status, claim.created_at)).join("");
+  } else {
+    target.innerHTML = rows.map((saved) => accountRow(saved.items?.title || "Campus item", (saved.items?.item_type || "").toUpperCase() + " · " + (saved.items?.campus_location || ""), saved.items?.status || "saved", saved.created_at)).join("");
+  }
+}
+async function loadAccountData() {
+  if (!supabase || !currentUser) return;
+  $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
+  const [posts, claims, saved] = await Promise.all([
+    supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
+    supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
+    supabase.from("saved_items").select("id,created_at,items!saved_items_item_id_fkey(title,item_type,campus_location,status)").order("created_at", { ascending: false })
+  ]);
+  const failed = [posts, claims, saved].find((result) => result.error);
+  if (failed) {
+    console.error("FindIt account activity:", failed.error);
+    $("#accountContent").innerHTML = '<p class="form-error">Could not load your activity. ' + esc(failed.error.message) + '</p>';
+    return;
+  }
+  accountData = { posts: posts.data || [], claims: claims.data || [], saved: saved.data || [] };
+  renderAccountTab();
+}
+async function openAccount() {
+  if (!await needLogin()) return;
+  $("#accountName").textContent = currentProfile?.display_name || "Student";
+  $("#accountEmail").textContent = currentUser.email || "";
+  $("#accountAvatar").textContent = (currentProfile?.display_name || currentUser.email || "S").trim().charAt(0).toUpperCase();
+  $("#profileName").value = currentProfile?.display_name || "";
+  errorAt("#profileError");
+  accountTab = "posts";
+  document.querySelectorAll(".account-tab").forEach((button) => button.classList.toggle("active", button.dataset.accountTab === accountTab));
+  accountDialog.showModal();
+  await loadAccountData();
+}
+async function saveProfile(event) {
+  event.preventDefault();
+  errorAt("#profileError");
+  const displayName = $("#profileName").value.trim();
+  if (displayName.length < 2) return errorAt("#profileError", "Please enter at least 2 characters.");
+  const button = $("#saveProfile");
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const { data, error } = await supabase.from("profiles").update({ display_name: displayName }).eq("id", currentUser.id).select("display_name").single();
+  button.disabled = false;
+  button.textContent = "Save profile";
+  if (error) return errorAt("#profileError", error.message);
+  currentProfile = data;
+  header();
+  $("#accountName").textContent = displayName;
+  $("#accountAvatar").textContent = displayName.charAt(0).toUpperCase();
+  notify("Your profile has been updated.");
+}
+\nasync function loadSavedItems() {
   savedItemIds = new Set();
   if (!supabase || !currentUser) return;
   const { data, error } = await supabase.from("saved_items").select("item_id");
@@ -314,7 +389,7 @@ async function submitClaim(event) {
   notify("Claim request sent to the item owner.");
 }
 
-$("#login")?.addEventListener("click", openLogin);
+$("#login")?.addEventListener("click", openLogin);\n$("#account")?.addEventListener("click", openAccount);\n$("#profileForm")?.addEventListener("submit", saveProfile);\ndocument.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));\n$("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
 $("#googleLogin")?.addEventListener("click", signIn);
 $("#logout")?.addEventListener("click", signOut);
 ["#post", "#post2", "#report"].forEach((selector) => {
