@@ -45,6 +45,7 @@ function header() {
   if ($("#login")) $("#login").hidden = !!currentUser;
   if ($("#logout")) $("#logout").hidden = !currentUser;
   if ($("#account")) $("#account").hidden = !currentUser;
+  if ($("#notificationsButton")) $("#notificationsButton").hidden = !currentUser;
   if ($("#adminDashboard")) $("#adminDashboard").hidden = currentRole !== "admin";
   if ($("#userLabel")) $("#userLabel").textContent =
     currentProfile?.display_name || currentUser?.email || "";
@@ -387,7 +388,7 @@ async function loadAdminDashboard() {
 }
 
 async function loadNotifications() {
-  if (!currentUser || !supabase) return;
+  if (!currentUser || !supabase || !$("#notificationList")) return;
   const { data, error } = await supabase.from("notifications")
     .select("id,title,body,read_at,created_at")
     .order("created_at", { ascending: false }).limit(40);
@@ -397,8 +398,10 @@ async function loadNotifications() {
   }
   const rows = data || [];
   const unread = rows.filter(row => !row.read_at).length;
-  $("#notificationCount").textContent = unread > 9 ? "9+" : String(unread);
-  $("#notificationCount").hidden = unread === 0;
+  if ($("#notificationCount")) {
+    $("#notificationCount").textContent = unread > 9 ? "9+" : String(unread);
+    $("#notificationCount").hidden = unread === 0;
+  }
   $("#notificationList").innerHTML = rows.length ? rows.map(row =>
     '<article class="notification-row ' + (row.read_at ? "is-read" : "is-unread") + '">' +
     '<div><strong>' + esc(row.title) + '</strong><p>' + esc(row.body) + '</p><small>' +
@@ -419,11 +422,12 @@ async function loadNotifications() {
 }
 async function openNotifications() {
   if (!await needLogin()) return;
+  if (!$("#notificationDialog")) return;
   $("#notificationDialog").showModal();
   await loadNotifications();
 }
 async function markAllNotificationsRead() {
-  if (!currentUser) return;
+  if (!currentUser || !supabase) return;
   const { error } = await supabase.from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("user_id", currentUser.id).is("read_at", null);
@@ -445,7 +449,7 @@ function subscribeNotifications() {
 }
 
 async function markPostReturned(itemId, button) {
-  if (!currentUser) return;
+  if (!currentUser || !supabase) return;
   const confirmed = window.confirm("Mark this item as returned? This will close the listing and complete any accepted claim.");
   if (!confirmed) return;
   button.disabled = true;
