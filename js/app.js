@@ -1,3 +1,15 @@
+window.addEventListener("error", (event) => {
+  console.error("FindIt page error:", event.error || event.message);
+  const message = event.error?.message || event.message || "Unknown JavaScript error";
+  const target = document.querySelector("#items");
+  if (target && target.textContent.includes("Connecting to the campus board")) {
+    target.innerHTML = '<div class="empty-board empty-board-error"><h3>FindIt encountered a page error</h3><p>' + esc(message) + '</p><button type="button" class="text-button" onclick="location.reload()">Reload page</button></div>';
+  }
+});
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("FindIt background task failed:", event.reason);
+});
+
 const SUPABASE_URL = "https://bmtearyxlnrzgcuvcepw.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Lck0L35G-vtAqFRQfMUH2A_fhQ2neY4";
 
@@ -10,7 +22,34 @@ let filter = "All";
 let categoryFilter = "All";
 let sortOrder = "newest";
 let allItems = [];
-let recentlyViewed = JSON.parse(localStorage.getItem("finditRecentlyViewed") || "[]");
+function readStorage(key, fallback = "") {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch (error) {
+    console.warn("FindIt storage is unavailable:", error);
+    return fallback;
+  }
+}
+function writeStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn("FindIt could not save a local preference:", error);
+    return false;
+  }
+}
+function readStorageList(key) {
+  try {
+    const value = JSON.parse(readStorage(key, "[]"));
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    console.warn("FindIt found invalid saved data and reset that list:", error);
+    return [];
+  }
+}
+let recentlyViewed = readStorageList("finditRecentlyViewed");
 let activeDetailItem = null;
 let activeReportItem = null;
 
@@ -70,7 +109,7 @@ function render() {
     (filter === "All" || item.item_type === filter) &&
     (categoryFilter === "All" || item.category === categoryFilter) &&
     (!$("#dateFilter")?.value || item.event_date === $("#dateFilter").value) &&
-    (!$("#buildingFilter")?.value.trim() || (item.building || item.campus_location).toLowerCase().includes($("#buildingFilter").value.trim().toLowerCase())) &&
+    (!$("#buildingFilter")?.value.trim() || String(item.building || item.campus_location || "").toLowerCase().includes($("#buildingFilter").value.trim().toLowerCase())) &&
     [item.title, item.description, item.category, item.campus_location, item.building]
       .join(" ").toLowerCase().includes(query)
   ).sort((a, b) => sortOrder === "newest"
@@ -412,7 +451,7 @@ async function loadAdminDashboard() {
 
 function rememberViewed(itemId) {
   recentlyViewed = [itemId, ...recentlyViewed.filter(id => id !== itemId)].slice(0,20);
-  localStorage.setItem("finditRecentlyViewed", JSON.stringify(recentlyViewed));
+  writeStorage("finditRecentlyViewed", JSON.stringify(recentlyViewed));
 }
 function renderRecentlyViewed() {
   const target = $("#accountContent");
@@ -960,7 +999,7 @@ async function loadPreferences() {
   if (!currentUser || !supabase) return;
   const {data, error} = await supabase.from("user_preferences").select("theme,email_notifications").eq("user_id",currentUser.id).maybeSingle();
   if (error) console.warn("FindIt preferences:", error.message);
-  const theme = data?.theme || localStorage.getItem("finditTheme") || "light";
+  const theme = data?.theme || readStorage("finditTheme", "light");
   $("#themePreference").value = theme;
   $("#emailNotifications").checked = data?.email_notifications ?? true;
   setTheme(theme);
@@ -968,7 +1007,7 @@ async function loadPreferences() {
 function setTheme(theme) {
   const resolved = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
   document.documentElement.dataset.theme = resolved;
-  localStorage.setItem("finditTheme", theme);
+  writeStorage("finditTheme", theme);
   if ($("#themeToggle")) $("#themeToggle").textContent = resolved === "dark" ? "☀" : "☾";
 }
 async function savePreferences(event) {
@@ -1029,7 +1068,7 @@ async function startFindIt() {
       });
     });
 
-    setTheme(localStorage.getItem("finditTheme") || "light");
+    setTheme(readStorage("finditTheme", "light"));
     await refreshSession();
     await loadPreferences();
     await loadItems();
