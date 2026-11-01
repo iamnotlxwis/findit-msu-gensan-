@@ -74,3 +74,15 @@ function jsonResponse(value) {
 function checkFindItMailQuota() {
   Logger.log("Remaining recipients today: " + MailApp.getRemainingDailyQuota());
 }
+
+
+// Run once to create a strong shared secret for Vercel <-> Apps Script.
+// Copy the logged value into Vercel as GAS_SHARED_SECRET.
+// Do not publish or share this value.
+function generateFindItSharedSecret() {
+  const secret = Utilities.getUuid().replace(/-/g, "") +
+    Utilities.getUuid().replace(/-/g, "");
+  PropertiesService.getScriptProperties()
+    .setProperty("FINDIT_SHARED_SECRET", secret);
+  Logger.log("Copy this into Vercel as GAS_SHARED_SECRET: " + secret);
+}
