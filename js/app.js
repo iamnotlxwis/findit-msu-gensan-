@@ -875,9 +875,10 @@ document.querySelectorAll(".close-button").forEach((button) => {
   });
 });
 $("#itemPhoto")?.addEventListener("change", () => {
-  const file = $("#itemPhoto").files[0];
-  $("#fileName").textContent = file ? file.name : "No file selected";
-  $("#uploadZone")?.classList.toggle("has-file", !!file);
+  const files = Array.from($("#itemPhoto").files || []);
+  $("#fileName").textContent = files.length ? files.map(file => file.name).join(", ") : "No files selected";
+  $("#uploadZone")?.classList.toggle("has-file", !!files.length);
+  $("#photoPreviews").innerHTML = files.slice(0,5).map(file => '<img alt="Photo preview" src="' + URL.createObjectURL(file) + '">').join("");
 });
 const uploadZone = $("#uploadZone");
 uploadZone?.addEventListener("dragover", (event) => {
