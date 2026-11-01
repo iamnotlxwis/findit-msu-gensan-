@@ -143,15 +143,17 @@ function renderAccountTab() {
       button.addEventListener("click", () => deleteOwnPost(button.dataset.deletePost, button));
     });
   } else if (accountTab === "claims") {
-    target.innerHTML = rows.map((claim) => accountRow(claim.items?.title || "Campus item", claim.items?.item_type?.toUpperCase() + " · " + claim.message, claim.status, claim.created_at)).join("");
+    target.innerHTML = rows.map((claim) => accountRow(claim.items?.title || "Campus item", claim.items?.item_type?.toUpperCase() + " · " + claim.message, claim.status, claim.created_at) + (claim.status === "accepted" ? '<button class="claim-review accept" data-handover="' + esc(claim.id) + '" data-side="claimant">Confirm received item</button>' : "")).join("");
+    target.querySelectorAll("[data-handover]").forEach(button => button.addEventListener("click", () => confirmHandover(button.dataset.handover,button.dataset.side,button)));
   } else {
     target.innerHTML = rows.map((claim) => {
       const item = claim.items || {};
       const actions = claim.status === "pending"
         ? '<div class="claim-review-actions"><button type="button" class="claim-review accept" data-claim-action="accepted" data-claim-id="' + esc(claim.id) + '">Accept</button><button type="button" class="claim-review reject" data-claim-action="rejected" data-claim-id="' + esc(claim.id) + '">Reject</button></div>'
-        : "";
+        : claim.status === "accepted" ? '<button type="button" class="claim-review accept" data-handover="' + esc(claim.id) + '" data-side="owner">Confirm handed over</button>' : "";
       return '<article class="received-row"><div class="received-main"><strong>' + esc(item.title || "Campus item") + '</strong><small>' + esc(item.item_type || "") + " · " + esc(claim.message) + '</small><span class="activity-status">' + esc(statusLabel(claim.status)) + '</span></div>' + actions + '</article>';
     }).join("");
+    target.querySelectorAll("[data-handover]").forEach(button => button.addEventListener("click", () => confirmHandover(button.dataset.handover,button.dataset.side,button)));
     target.querySelectorAll("[data-claim-action]").forEach((button) => {
       button.addEventListener("click", () => reviewClaim(button.dataset.claimId, button.dataset.claimAction, button));
     });
@@ -384,6 +386,7 @@ async function loadAdminDashboard() {
     notify("Report status updated.");
     await loadAdminDashboard();
   }));
+  await loadAdminExtras(target);
 }
 
 
@@ -551,7 +554,7 @@ async function loadAccountData() {
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
   const [posts, claims, received] = await Promise.all([
     supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
+    supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type,owner_id)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false })
   ]);
   const failed = [posts, claims, received].find((result) => result.error);
