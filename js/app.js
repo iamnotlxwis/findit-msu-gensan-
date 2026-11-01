@@ -13,7 +13,7 @@ window.addEventListener("unhandledrejection", (event) => {
 const SUPABASE_URL = "https://bmtearyxlnrzgcuvcepw.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Lck0L35G-vtAqFRQfMUH2A_fhQ2neY4";
 
-let supabase = null;
+let db = null;
 let currentUser = null;
 let currentProfile = null;
 let currentRole = null;
@@ -137,8 +137,8 @@ function render() {
 
   grid.innerHTML = rows.map((item) => {
     const firstPhoto = item.media?.[0]?.storage_path || item.image_path;
-    const photo = firstPhoto && supabase
-      ? '<img src="' + esc(supabase.storage.from("item-images").getPublicUrl(firstPhoto).data.publicUrl) + '" alt="Item photo" loading="lazy">'
+    const photo = firstPhoto && db
+      ? '<img src="' + esc(db.storage.from("item-images").getPublicUrl(firstPhoto).data.publicUrl) + '" alt="Item photo" loading="lazy">'
       : '<span class="item-symbol">⌕</span>';
     const claim = currentUser && currentUser.id !== item.owner_id && item.status === "active"
       ? '<button class="claim-button" data-claim="' + esc(item.id) + '">Submit a claim</button>'
@@ -237,8 +237,8 @@ function renderConversations() {
   );
 }
 async function loadConversations() {
-  if (!currentUser || !supabase) return;
-  const { data, error } = await supabase.from("conversations")
+  if (!currentUser || !db) return;
+  const { data, error } = await db.from("conversations")
     .select("id,item_id,participant_one,participant_two,created_at,items!conversations_item_id_fkey(title)")
     .order("created_at", { ascending: false });
   if (error) {
@@ -251,7 +251,7 @@ async function loadConversations() {
   ))];
   let profiles = [];
   if (otherIds.length) {
-    const result = await supabase.from("profiles").select("id,display_name").in("id", otherIds);
+    const result = await db.from("profiles").select("id,display_name").in("id", otherIds);
     if (result.error) {
       $("#accountContent").innerHTML = '<p class="form-error">Could not load conversation names.</p>';
       return;
@@ -273,8 +273,8 @@ async function openConversation(conversationId) {
   $("#messageInput").value = "";
   $("#messageDialog").showModal();
   await loadMessages();
-  if (messageChannel) await supabase.removeChannel(messageChannel);
-  messageChannel = supabase.channel("findit-messages-" + conversationId)
+  if (messageChannel) await db.removeChannel(messageChannel);
+  messageChannel = db.channel("findit-messages-" + conversationId)
     .on("postgres_changes", {
       event: "INSERT", schema: "public", table: "messages",
       filter: "conversation_id=eq." + conversationId
@@ -285,7 +285,7 @@ async function openConversation(conversationId) {
 async function loadMessages() {
   if (!activeConversation) return;
   const target = $("#messageList");
-  const { data, error } = await supabase.from("messages")
+  const { data, error } = await db.from("messages")
     .select("id,conversation_id,sender_id,body,created_at,profiles!messages_sender_id_fkey(display_name)")
     .eq("conversation_id", activeConversation.id)
     .order("created_at", { ascending: true });
@@ -310,7 +310,7 @@ async function sendMessage(event) {
   if (!body || !activeConversation || !currentUser) return;
   const button = $("#sendMessage");
   button.disabled = true;
-  const { error } = await supabase.from("messages").insert({
+  const { error } = await db.from("messages").insert({
     conversation_id: activeConversation.id, sender_id: currentUser.id, body
   });
   button.disabled = false;
@@ -320,8 +320,8 @@ async function sendMessage(event) {
 }
 async function closeMessageDialog() {
   $("#messageDialog").close();
-  if (messageChannel && supabase) {
-    await supabase.removeChannel(messageChannel);
+  if (messageChannel && db) {
+    await db.removeChannel(messageChannel);
     messageChannel = null;
   }
   activeConversation = null;
@@ -334,11 +334,11 @@ async function reviewClaim(claimId, nextStatus, button) {
   const confirmed = window.confirm(nextStatus === "accepted" ? "Accept this claim and prepare a private handover conversation?" : "Reject this claim?");
   if (!confirmed) return;
   button.disabled = true;
-  const { error } = await supabase.from("claims").update({ status: nextStatus }).eq("id", claimId).eq("status", "pending");
+  const { error } = await db.from("claims").update({ status: nextStatus }).eq("id", claimId).eq("status", "pending");
   if (error) { button.disabled = false; notify("Unable to update claim: " + error.message); return; }
   if (nextStatus === "accepted") {
     const participants = [currentUser.id, claim.claimant_id].sort();
-    const { error: conversationError } = await supabase.from("conversations").upsert({ item_id: claim.item_id, participant_one: participants[0], participant_two: participants[1] }, { onConflict: "item_id,participant_one,participant_two", ignoreDuplicates: true });
+    const { error: conversationError } = await db.from("conversations").upsert({ item_id: claim.item_id, participant_one: participants[0], participant_two: participants[1] }, { onConflict: "item_id,participant_one,participant_two", ignoreDuplicates: true });
     if (conversationError) { console.error("FindIt conversation setup:", conversationError); notify("Claim accepted, but the private chat could not be prepared yet."); }
     else notify("Claim accepted. A private handover conversation is ready.");
   } else notify("Claim rejected.");
@@ -353,7 +353,7 @@ async function deleteOwnPost(itemId, button) {
 
   button.disabled = true;
   button.textContent = "Removing...";
-  const { error } = await supabase.from("items")
+  const { error } = await db.from("items")
     .delete()
     .eq("id", itemId)
     .eq("owner_id", currentUser.id);
@@ -368,7 +368,7 @@ async function deleteOwnPost(itemId, button) {
   allItems = allItems.filter((row) => row.id !== itemId);
   accountData.posts = accountData.posts.filter((row) => row.id !== itemId);
   if (item.image_path) {
-    const { error: storageError } = await supabase.storage
+    const { error: storageError } = await db.storage
       .from("item-images").remove([item.image_path]);
     if (storageError) console.warn("FindIt image cleanup:", storageError.message);
   }
@@ -387,10 +387,10 @@ async function loadAdminDashboard() {
   const target = $("#adminContent");
   target.innerHTML = '<p class="loading-state">Loading moderation queue...</p>';
   const [items, reports] = await Promise.all([
-    supabase.from("items")
+    db.from("items")
       .select("id,title,item_type,status,moderation_status,created_at,owner_id,profiles!items_owner_id_fkey(display_name)")
       .order("created_at", { ascending: false }).limit(100),
-    supabase.from("reports")
+    db.from("reports")
       .select("id,item_id,reporter_id,reason,status,created_at,items!reports_item_id_fkey(title),profiles!reports_reporter_id_fkey(display_name)")
       .order("created_at", { ascending: false }).limit(100)
   ]);
@@ -426,7 +426,7 @@ async function loadAdminDashboard() {
 
   target.querySelectorAll("[data-admin-item]").forEach(button => button.addEventListener("click", async () => {
     button.disabled = true;
-    const { error } = await supabase.from("items")
+    const { error } = await db.from("items")
       .update({ moderation_status: button.dataset.nextModeration })
       .eq("id", button.dataset.adminItem);
     if (error) { button.disabled = false; return notify("Moderation failed: " + error.message); }
@@ -437,7 +437,7 @@ async function loadAdminDashboard() {
   }));
   target.querySelectorAll("[data-admin-report]").forEach(button => button.addEventListener("click", async () => {
     button.disabled = true;
-    const { error } = await supabase.from("reports")
+    const { error } = await db.from("reports")
       .update({ status: button.dataset.nextReport })
       .eq("id", button.dataset.adminReport);
     if (error) { button.disabled = false; return notify("Report update failed: " + error.message); }
@@ -460,7 +460,7 @@ function renderRecentlyViewed() {
 }
 async function renderReputation() {
   const target = $("#accountContent");
-  const { data, error } = await supabase.from("profiles").select("reputation_points,successful_returns").eq("id", currentUser.id).single();
+  const { data, error } = await db.from("profiles").select("reputation_points,successful_returns").eq("id", currentUser.id).single();
   if (error) { target.innerHTML = '<p class="form-error">Could not load reputation.</p>'; return; }
   target.innerHTML = '<section class="reputation-card"><div class="reputation-score">' + Number(data.reputation_points || 0) + '</div><h3>Community points</h3><p>' + Number(data.successful_returns || 0) + ' successful returns</p><small>Earn 10 points when both sides confirm a handover.</small></section>';
 }
@@ -472,21 +472,21 @@ async function confirmHandover(claimId, side, button) {
   const itemId = claim.item_id;
   const ownerId = side === "owner" ? currentUser.id : claim.items?.owner_id;
   const claimantId = side === "claimant" ? currentUser.id : claim.claimant_id;
-  let { data, error } = await supabase.from("handover_confirmations").select("*").eq("claim_id", claimId).maybeSingle();
+  let { data, error } = await db.from("handover_confirmations").select("*").eq("claim_id", claimId).maybeSingle();
   if (!data && !error) {
-    const created = await supabase.from("handover_confirmations").insert({ item_id:itemId, claim_id:claimId, owner_id:ownerId, claimant_id:claimantId }).select("*").single();
+    const created = await db.from("handover_confirmations").insert({ item_id:itemId, claim_id:claimId, owner_id:ownerId, claimant_id:claimantId }).select("*").single();
     data = created.data; error = created.error;
   }
   if (error || !data) { button.disabled=false; return notify("Could not prepare handover: " + (error?.message || "Unknown error")); }
   const column = side === "owner" ? "owner_confirmed_at" : "claimant_confirmed_at";
-  const update = await supabase.from("handover_confirmations").update({ [column]: new Date().toISOString() }).eq("id", data.id);
+  const update = await db.from("handover_confirmations").update({ [column]: new Date().toISOString() }).eq("id", data.id);
   if (update.error) { button.disabled=false; return notify("Confirmation failed: " + update.error.message); }
   notify("Your handover confirmation was recorded. The item closes after both sides confirm.");
   await loadAccountData(); await loadItems();
 }
 async function logAdminAction(action, targetType, targetId, details={}) {
   if (!currentUser) return;
-  const { error } = await supabase.from("admin_activity_logs").insert({admin_id:currentUser.id,action,target_type:targetType,target_id:targetId,details});
+  const { error } = await db.from("admin_activity_logs").insert({admin_id:currentUser.id,action,target_type:targetType,target_id:targetId,details});
   if (error) console.warn("Admin activity log:", error.message);
 }
 function downloadCsv(filename, rows) {
@@ -498,9 +498,9 @@ function downloadCsv(filename, rows) {
 }
 async function loadAdminExtras(target) {
   const [profiles, logs, settings] = await Promise.all([
-    supabase.from("profiles").select("id,display_name,is_suspended,reputation_points,successful_returns,created_at").order("created_at",{ascending:false}).limit(100),
-    supabase.from("admin_activity_logs").select("id,admin_id,action,target_type,target_id,details,created_at").order("created_at",{ascending:false}).limit(100),
-    supabase.from("findit_settings").select("listing_expiry_days").eq("id",true).single()
+    db.from("profiles").select("id,display_name,is_suspended,reputation_points,successful_returns,created_at").order("created_at",{ascending:false}).limit(100),
+    db.from("admin_activity_logs").select("id,admin_id,action,target_type,target_id,details,created_at").order("created_at",{ascending:false}).limit(100),
+    db.from("findit_settings").select("listing_expiry_days").eq("id",true).single()
   ]);
   const profileRows = profiles.data || [], logRows = logs.data || [];
   target.insertAdjacentHTML("beforeend",
@@ -512,26 +512,26 @@ async function loadAdminExtras(target) {
   $("#saveExpiry")?.addEventListener("click", async () => {
     const days = Number($("#expiryDays").value);
     if (!Number.isInteger(days) || days < 1 || days > 365) return notify("Choose between 1 and 365 days.");
-    const {error} = await supabase.from("findit_settings").update({listing_expiry_days:days,updated_at:new Date().toISOString()}).eq("id",true);
+    const {error} = await db.from("findit_settings").update({listing_expiry_days:days,updated_at:new Date().toISOString()}).eq("id",true);
     if (error) return notify("Could not save expiry setting: " + error.message);
     await logAdminAction("Updated listing expiry","settings",null,{days}); notify("Listing expiry updated.");
   });
   target.querySelectorAll("[data-suspend]").forEach(button => button.addEventListener("click", async () => {
-    const {error} = await supabase.from("profiles").update({is_suspended:button.dataset.state === "true"}).eq("id",button.dataset.suspend);
+    const {error} = await db.from("profiles").update({is_suspended:button.dataset.state === "true"}).eq("id",button.dataset.suspend);
     if (error) return notify("Could not update student: " + error.message);
     await logAdminAction(button.dataset.state === "true" ? "Suspended student" : "Restored student","profile",button.dataset.suspend);
     await loadAdminDashboard();
   }));
   $("#exportReports")?.addEventListener("click", async () => {
-    const {data,error}=await supabase.from("reports").select("id,item_id,reporter_id,reason,status,created_at");
+    const {data,error}=await db.from("reports").select("id,item_id,reporter_id,reason,status,created_at");
     if(error) return notify("Export failed: "+error.message); downloadCsv("findit-reports.csv",data||[]);
   });
   $("#exportLogs")?.addEventListener("click", async () => downloadCsv("findit-admin-activity.csv",logRows));
 }
 
 async function loadNotifications() {
-  if (!currentUser || !supabase || !$("#notificationList")) return;
-  const { data, error } = await supabase.from("notifications")
+  if (!currentUser || !db || !$("#notificationList")) return;
+  const { data, error } = await db.from("notifications")
     .select("id,title,body,read_at,created_at")
     .order("created_at", { ascending: false }).limit(40);
   if (error) {
@@ -554,7 +554,7 @@ async function loadNotifications() {
 
   $("#notificationList").querySelectorAll("[data-read-notification]").forEach(button => {
     button.addEventListener("click", async () => {
-      const { error: updateError } = await supabase.from("notifications")
+      const { error: updateError } = await db.from("notifications")
         .update({ read_at: new Date().toISOString() })
         .eq("id", button.dataset.readNotification).eq("user_id", currentUser.id);
       if (updateError) return notify("Couldn't update notification: " + updateError.message);
@@ -569,17 +569,17 @@ async function openNotifications() {
   await loadNotifications();
 }
 async function markAllNotificationsRead() {
-  if (!currentUser || !supabase) return;
-  const { error } = await supabase.from("notifications")
+  if (!currentUser || !db) return;
+  const { error } = await db.from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("user_id", currentUser.id).is("read_at", null);
   if (error) return notify("Couldn't mark notifications as read: " + error.message);
   await loadNotifications();
 }
 function subscribeNotifications() {
-  if (!supabase || !currentUser) return;
-  if (notificationChannel) supabase.removeChannel(notificationChannel);
-  notificationChannel = supabase.channel("findit-notifications-" + currentUser.id)
+  if (!db || !currentUser) return;
+  if (notificationChannel) db.removeChannel(notificationChannel);
+  notificationChannel = db.channel("findit-notifications-" + currentUser.id)
     .on("postgres_changes", {
       event: "INSERT", schema: "public", table: "notifications",
       filter: "user_id=eq." + currentUser.id
@@ -591,17 +591,17 @@ function subscribeNotifications() {
 }
 
 async function markPostReturned(itemId, button) {
-  if (!currentUser || !supabase) return;
+  if (!currentUser || !db) return;
   const confirmed = window.confirm("Mark this item as returned? This will close the listing and complete any accepted claim.");
   if (!confirmed) return;
   button.disabled = true;
-  const { error } = await supabase.from("items").update({ status: "returned" })
+  const { error } = await db.from("items").update({ status: "returned" })
     .eq("id", itemId).eq("owner_id", currentUser.id);
   if (error) {
     button.disabled = false;
     return notify("Couldn't update listing: " + error.message);
   }
-  await supabase.from("claims").update({ status: "completed" })
+  await db.from("claims").update({ status: "completed" })
     .eq("item_id", itemId).eq("status", "accepted");
   notify("Item marked as returned. Nice one!");
   await loadAccountData();
@@ -609,13 +609,13 @@ async function markPostReturned(itemId, button) {
 }
 
 async function loadAccountData() {
-  if (!supabase || !currentUser) return;
+  if (!db || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
   const [posts, claims, received, reports] = await Promise.all([
-    supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("claims").select("id,item_id,message,status,created_at,items!claims_item_id_fkey(title,item_type,owner_id)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("reports").select("id,reason,status,created_at,items!reports_item_id_fkey(title)").eq("reporter_id", currentUser.id).order("created_at", { ascending: false })
+    db.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
+    db.from("claims").select("id,item_id,message,status,created_at,items!claims_item_id_fkey(title,item_type,owner_id)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
+    db.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false }),
+    db.from("reports").select("id,reason,status,created_at,items!reports_item_id_fkey(title)").eq("reporter_id", currentUser.id).order("created_at", { ascending: false })
   ]);
   const failed = [posts, claims, received, reports].find((result) => result.error);
   if (failed) {
@@ -646,7 +646,7 @@ async function saveProfile(event) {
   const button = $("#saveProfile");
   button.disabled = true;
   button.textContent = "Saving...";
-  const { data, error } = await supabase.from("profiles").update({ display_name: displayName }).eq("id", currentUser.id).select("display_name").single();
+  const { data, error } = await db.from("profiles").update({ display_name: displayName }).eq("id", currentUser.id).select("display_name").single();
   button.disabled = false;
   button.textContent = "Save profile";
   if (error) return errorAt("#profileError", error.message);
@@ -665,7 +665,7 @@ function openItemDetails(itemId) {
   rememberViewed(item.id);
   const photos = (item.media?.length ? item.media.map(row => row.storage_path) : (item.image_path ? [item.image_path] : []));
   const image = photos.length
-    ? '<div class="detail-gallery">' + photos.map(path => '<img class="detail-image" src="' + esc(supabase.storage.from("item-images").getPublicUrl(path).data.publicUrl) + '" alt="' + esc(item.title) + '">').join("") + '</div>'
+    ? '<div class="detail-gallery">' + photos.map(path => '<img class="detail-image" src="' + esc(db.storage.from("item-images").getPublicUrl(path).data.publicUrl) + '" alt="' + esc(item.title) + '">').join("") + '</div>'
     : '<div class="detail-placeholder">♡</div>';
   const ownerCanClaim = currentUser && currentUser.id !== item.owner_id && item.status === "active";
   $("#detailContent").innerHTML = image +
@@ -708,7 +708,7 @@ async function submitReport(event) {
   const button = $("#submitReport");
   button.disabled = true;
   button.textContent = "Sending...";
-  const existing = await supabase.from("reports").select("id")
+  const existing = await db.from("reports").select("id")
     .eq("item_id", activeReportItem.id).eq("reporter_id", currentUser.id).limit(1);
   if (existing.error) {
     button.disabled = false;
@@ -721,7 +721,7 @@ async function submitReport(event) {
     return errorAt("#reportError", "You've already reported this listing.");
   }
 
-  const { error } = await supabase.from("reports").insert({
+  const { error } = await db.from("reports").insert({
     item_id: activeReportItem.id, reporter_id: currentUser.id, reason
   });
   button.disabled = false;
@@ -734,9 +734,9 @@ async function submitReport(event) {
 }
 
 async function loadItems() {
-  if (!supabase || !grid) return;
+  if (!db || !grid) return;
   grid.innerHTML = '<p class="loading">Loading campus listings...</p>';
-  const { data, error } = await supabase.from("items")
+  const { data, error } = await db.from("items")
     .select("id,item_type,title,description,category,campus_location,building,event_date,status,created_at,owner_id,image_path,expires_at,verification_question,item_media(storage_path)")
     .eq("moderation_status", "published")
     .in("status", ["active", "claimed"]).or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
@@ -755,10 +755,10 @@ async function loadItems() {
   render();
 
   const [total, lost, found, returned] = await Promise.all([
-    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").in("status", ["active", "claimed"]),
-    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("item_type", "lost").in("status", ["active", "claimed"]),
-    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("item_type", "found").in("status", ["active", "claimed"]),
-    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("status", "returned")
+    db.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").in("status", ["active", "claimed"]),
+    db.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("item_type", "lost").in("status", ["active", "claimed"]),
+    db.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("item_type", "found").in("status", ["active", "claimed"]),
+    db.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("status", "returned")
   ]);
   if ($("#statTotal")) $("#statTotal").textContent = total.count ?? "—";
   if ($("#statLost")) $("#statLost").textContent = lost.count ?? "—";
@@ -767,18 +767,18 @@ async function loadItems() {
 }
 
 async function refreshSession() {
-  if (!supabase) return;
-  const { data, error } = await supabase.auth.getSession();
+  if (!db) return;
+  const { data, error } = await db.auth.getSession();
   if (error) console.error("FindIt session:", error);
   currentUser = data?.session?.user || null;
   currentProfile = null;
-  if (notificationChannel) { await supabase.removeChannel(notificationChannel); notificationChannel = null; }
+  if (notificationChannel) { await db.removeChannel(notificationChannel); notificationChannel = null; }
   if (currentUser) subscribeNotifications();
   currentRole = null;
   if (currentUser) {
-    const roleResult = await supabase.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle();
+    const roleResult = await db.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle();
     if (!roleResult.error) currentRole = roleResult.data?.role || null;
-    const result = await supabase.from("profiles")
+    const result = await db.from("profiles")
       .select("display_name,is_suspended,reputation_points,successful_returns").eq("id", currentUser.id).maybeSingle();
     if (!result.error) currentProfile = result.data;
   }
@@ -788,11 +788,11 @@ async function refreshSession() {
 
 async function signIn() {
   const button = $("#googleLogin");
-  if (!supabase) return errorAt("#authError", "FindIt is still connecting. Please wait a moment and try again.");
+  if (!db) return errorAt("#authError", "FindIt is still connecting. Please wait a moment and try again.");
   errorAt("#authError");
   if (button) { button.disabled = true; button.textContent = "Connecting to Google..."; }
   try {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await db.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: window.location.origin + window.location.pathname
@@ -806,6 +806,24 @@ async function signIn() {
   }
 }
 
+async function signOut() {
+  if (!db) return;
+  const { error } = await db.auth.signOut();
+  if (error) {
+    console.error("FindIt sign out:", error);
+    notify("Couldn't log out: " + error.message);
+    return;
+  }
+  currentUser = null;
+  currentProfile = null;
+  currentRole = null;
+  if (notificationChannel) { await db.removeChannel(notificationChannel); notificationChannel = null; }
+  if (accountDialog?.open) accountDialog.close();
+  header();
+  render();
+  notify("You've been logged out.");
+}
+
 async function uploadPhoto(file, itemId) {
   if (!file) return null;
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5242880) {
@@ -813,10 +831,10 @@ async function uploadPhoto(file, itemId) {
   }
   const extension = file.name.split(".").pop().toLowerCase();
   const path = currentUser.id + "/" + itemId + "/" + crypto.randomUUID() + "." + extension;
-  const { error } = await supabase.storage.from("item-images")
+  const { error } = await db.storage.from("item-images")
     .upload(path, file, { contentType: file.type });
   if (error) throw error;
-  const { error: mediaError } = await supabase.from("item_media").insert({
+  const { error: mediaError } = await db.from("item_media").insert({
     item_id: itemId, uploader_id: currentUser.id, storage_path: path, media_type: "image"
   });
   if (mediaError) throw mediaError;
@@ -826,7 +844,7 @@ async function uploadPhoto(file, itemId) {
 async function createItem(event) {
   event.preventDefault();
   errorAt("#postError");
-  if (!supabase) return errorAt("#postError", "FindIt is still connecting. Please try again.");
+  if (!db) return errorAt("#postError", "FindIt is still connecting. Please try again.");
   if (!await needLogin()) return;
 
   const description = $("#itemDescription").value.trim();
@@ -855,13 +873,13 @@ async function createItem(event) {
       event_date: $("#itemDate").value || null,
       description
     };
-    const { data, error } = await supabase.from("items").insert(item).select("id").single();
+    const { data, error } = await db.from("items").insert(item).select("id").single();
     if (error) throw error;
 
     const uploadedPaths = [];
     for (const file of files) uploadedPaths.push(await uploadPhoto(file, data.id));
     if (uploadedPaths.length) {
-      const { error: pathError } = await supabase.from("items")
+      const { error: pathError } = await db.from("items")
         .update({ image_path: uploadedPaths[0] }).eq("id", data.id);
       if (pathError) throw pathError;
     }
@@ -882,7 +900,7 @@ async function createItem(event) {
 }
 
 async function openClaim(id) {
-  if (!supabase) return notify("FindIt is still connecting. Please try again.");
+  if (!db) return notify("FindIt is still connecting. Please try again.");
   if (!await needLogin()) return;
   selectedItem = allItems.find((item) => item.id === id);
   if (!selectedItem) return;
@@ -896,11 +914,11 @@ async function openClaim(id) {
 async function submitClaim(event) {
   event.preventDefault();
   errorAt("#claimError");
-  if (!supabase || !currentUser || !selectedItem) return;
+  if (!db || !currentUser || !selectedItem) return;
   const button = $("#claimForm button[type=submit]");
   button.disabled = true;
   const answer = $("#claimAnswer").value.trim();
-  const { error } = await supabase.from("claims").insert({
+  const { error } = await db.from("claims").insert({
     item_id: selectedItem.id,
     claimant_id: currentUser.id,
     verification_answer: answer,
@@ -925,7 +943,7 @@ $("#profileForm")?.addEventListener("submit", saveProfile);
 document.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));
 $("#messageForm")?.addEventListener("submit", sendMessage);
 $("#closeMessages")?.addEventListener("click", closeMessageDialog);
-$("#messageDialog")?.addEventListener("close", async () => { if (messageChannel && supabase) { await supabase.removeChannel(messageChannel); messageChannel = null; } activeConversation = null; });
+$("#messageDialog")?.addEventListener("close", async () => { if (messageChannel && db) { await db.removeChannel(messageChannel); messageChannel = null; } activeConversation = null; });
 $("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
 $("#googleLogin")?.addEventListener("click", signIn);
 $("#themeToggle")?.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
@@ -980,105 +998,3 @@ $("#dateFilter")?.addEventListener("change", render);
 $("#buildingFilter")?.addEventListener("input", render);
 $("#categoryFilter")?.addEventListener("change", (event) => {
   categoryFilter = event.target.value;
-  render();
-});
-$("#sortOrder")?.addEventListener("change", (event) => {
-  sortOrder = event.target.value;
-  render();
-});
-document.querySelectorAll(".filter").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelector(".filter.active")?.classList.remove("active");
-    button.classList.add("active");
-    filter = button.dataset.filter;
-    render();
-  });
-});
-
-async function loadPreferences() {
-  if (!currentUser || !supabase) return;
-  const {data, error} = await supabase.from("user_preferences").select("theme,email_notifications").eq("user_id",currentUser.id).maybeSingle();
-  if (error) console.warn("FindIt preferences:", error.message);
-  const theme = data?.theme || readStorage("finditTheme", "light");
-  $("#themePreference").value = theme;
-  $("#emailNotifications").checked = data?.email_notifications ?? true;
-  setTheme(theme);
-}
-function setTheme(theme) {
-  const resolved = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
-  document.documentElement.dataset.theme = resolved;
-  writeStorage("finditTheme", theme);
-  if ($("#themeToggle")) $("#themeToggle").textContent = resolved === "dark" ? "☀" : "☾";
-}
-async function savePreferences(event) {
-  event.preventDefault();
-  const theme = $("#themePreference").value;
-  if (!currentUser || !supabase) return;
-  const payload = {user_id:currentUser.id,theme,email_notifications:$("#emailNotifications").checked,updated_at:new Date().toISOString()};
-  const {error} = await supabase.from("user_preferences").upsert(payload,{onConflict:"user_id"});
-  if (error) { $("#preferencesError").textContent = error.message; return; }
-  setTheme(theme); $("#preferencesDialog").close(); notify("Preferences saved.");
-}
-
-async function startFindIt() {
-  try {
-    const createClient = window.supabase?.createClient;
-    if (typeof createClient !== "function") throw new Error("Supabase library did not load. Check your connection and reload FindIt.");
-    supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-    });
-    const connectionCheck = await supabase.from("items").select("id", { head: true, count: "exact" }).limit(1);
-    if (connectionCheck.error) throw connectionCheck.error;
-    // Keep this callback synchronous. Supabase auth callbacks must not await
-    // other Supabase requests because they can block the auth lock/session flow.
-    supabase.auth.onAuthStateChange((_event, session) => {
-      currentUser = session?.user || null;
-      currentProfile = null;
-      currentRole = null;
-      header();
-      render();
-
-      Promise.resolve().then(async () => {
-        if (notificationChannel) {
-          await supabase.removeChannel(notificationChannel);
-          notificationChannel = null;
-        }
-        if (!currentUser) return;
-
-        const userId = currentUser.id;
-        const [profileResult, roleResult] = await Promise.all([
-          supabase.from("profiles")
-            .select("display_name,is_suspended,reputation_points,successful_returns")
-            .eq("id", userId).maybeSingle(),
-          supabase.from("user_roles").select("role")
-            .eq("user_id", userId).maybeSingle()
-        ]);
-
-        // Ignore stale results if the user signed out or switched accounts.
-        if (!currentUser || currentUser.id !== userId) return;
-        if (!profileResult.error) currentProfile = profileResult.data;
-        if (!roleResult.error) currentRole = roleResult.data?.role || null;
-        subscribeNotifications();
-        if (auth?.open) auth.close();
-        header();
-        render();
-      }).catch(error => {
-        console.error("FindIt auth state update failed:", error);
-        errorAt("#authError", "Signed in, but your profile could not be loaded: " + error.message);
-      });
-    });
-
-    setTheme(readStorage("finditTheme", "light"));
-    await refreshSession();
-    await loadPreferences();
-    await loadItems();
-    clearNotice();
-  } catch (error) {
-    console.error("FindIt startup failed:", error);
-    notify("FindIt couldn't connect. Check your internet connection, then refresh. Details: " + error.message);
-  }
-}
-
-header();
-render();
-startFindIt();
