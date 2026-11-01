@@ -118,3 +118,10 @@
   .admin-stats { gap: 7px; }
   .admin-stats > div { padding: 11px; }
 }
+
+.report-listing-button{margin-top:9px}
+#reportForm{display:flex;flex-direction:column;gap:10px}
+#reportForm .modal-intro{margin-top:0}
+#reportItemTitle{color:#b84d7c}
+#reportForm label{margin-top:3px}
+@media(max-width:480px){#reportForm{padding:20px}}
