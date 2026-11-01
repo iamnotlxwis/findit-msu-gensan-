@@ -105,6 +105,9 @@ function render() {
 const accountDialog = $("#accountDialog");
 let accountData = { posts: [], claims: [], received: [], saved: [] };
 let accountTab = "posts";
+let conversations = [];
+let activeConversation = null;
+let messageChannel = null;
 
 function statusLabel(status) {
   return String(status || "unknown").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -115,6 +118,7 @@ function accountRow(title, detail, status, date) {
 function renderAccountTab() {
   const target = $("#accountContent");
   if (!target) return;
+  if (accountTab === "messages") { renderConversations(); loadConversations(); return; }
   const rows = accountData[accountTab] || [];
   if (!rows.length) {
     const messages = { posts: "No posts yet.", claims: "No submitted claims yet.", received: "No one has claimed your listings yet.", saved: "No saved listings yet." };
@@ -140,6 +144,115 @@ function renderAccountTab() {
     });
   }
 }
+
+function renderConversations() {
+  const target = $("#accountContent");
+  if (!target) return;
+  if (!conversations.length) {
+    target.innerHTML = '<div class="account-empty"><span>♡</span><p>No conversations yet. Accepted claims will appear here.</p></div>';
+    return;
+  }
+  target.innerHTML = conversations.map((conversation) =>
+    '<button type="button" class="conversation-row" data-conversation="' + esc(conversation.id) + '">' +
+    '<span class="conversation-avatar">♡</span><span class="conversation-info"><strong>' +
+    esc(conversation.partnerName) + '</strong><small>' + esc(conversation.items?.title || "Campus item") +
+    '</small></span><span class="conversation-arrow">›</span></button>'
+  ).join("");
+  target.querySelectorAll("[data-conversation]").forEach((button) =>
+    button.addEventListener("click", () => openConversation(button.dataset.conversation))
+  );
+}
+async function loadConversations() {
+  if (!currentUser || !supabase) return;
+  const { data, error } = await supabase.from("conversations")
+    .select("id,item_id,participant_one,participant_two,created_at,items!conversations_item_id_fkey(title)")
+    .order("created_at", { ascending: false });
+  if (error) {
+    $("#accountContent").innerHTML = '<p class="form-error">Could not load conversations: ' + esc(error.message) + '</p>';
+    return;
+  }
+  const rows = data || [];
+  const otherIds = [...new Set(rows.map((row) =>
+    row.participant_one === currentUser.id ? row.participant_two : row.participant_one
+  ))];
+  let profiles = [];
+  if (otherIds.length) {
+    const result = await supabase.from("profiles").select("id,display_name").in("id", otherIds);
+    if (result.error) {
+      $("#accountContent").innerHTML = '<p class="form-error">Could not load conversation names.</p>';
+      return;
+    }
+    profiles = result.data || [];
+  }
+  conversations = rows.map((row) => {
+    const otherId = row.participant_one === currentUser.id ? row.participant_two : row.participant_one;
+    return { ...row, partnerName: profiles.find((profile) => profile.id === otherId)?.display_name || "MSU student" };
+  });
+  if (accountTab === "messages") renderConversations();
+}
+async function openConversation(conversationId) {
+  activeConversation = conversations.find((row) => row.id === conversationId);
+  if (!activeConversation) return;
+  $("#messageTitle").textContent = activeConversation.partnerName;
+  $("#messageSubtitle").textContent = activeConversation.items?.title || "Private conversation";
+  errorAt("#messageError");
+  $("#messageInput").value = "";
+  $("#messageDialog").showModal();
+  await loadMessages();
+  if (messageChannel) await supabase.removeChannel(messageChannel);
+  messageChannel = supabase.channel("findit-messages-" + conversationId)
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "messages",
+      filter: "conversation_id=eq." + conversationId
+    }, (payload) => {
+      if (payload.new.sender_id !== currentUser.id) loadMessages();
+    }).subscribe();
+}
+async function loadMessages() {
+  if (!activeConversation) return;
+  const target = $("#messageList");
+  const { data, error } = await supabase.from("messages")
+    .select("id,conversation_id,sender_id,body,created_at,profiles!messages_sender_id_fkey(display_name)")
+    .eq("conversation_id", activeConversation.id)
+    .order("created_at", { ascending: true });
+  if (error) {
+    target.innerHTML = '<p class="form-error">Could not load messages: ' + esc(error.message) + '</p>';
+    return;
+  }
+  const rows = data || [];
+  target.innerHTML = rows.length ? rows.map((message) => {
+    const own = message.sender_id === currentUser.id;
+    return '<article class="message-bubble ' + (own ? "mine" : "theirs") + '"><small>' +
+      esc(own ? "You" : message.profiles?.display_name || "Student") + '</small><p>' +
+      esc(message.body || "") + '</p><time>' + esc(new Date(message.created_at).toLocaleString()) +
+      '</time></article>';
+  }).join("") : '<p class="account-empty">No messages yet. Say hello to arrange a safe handover.</p>';
+  target.scrollTop = target.scrollHeight;
+}
+async function sendMessage(event) {
+  event.preventDefault();
+  errorAt("#messageError");
+  const body = $("#messageInput").value.trim();
+  if (!body || !activeConversation || !currentUser) return;
+  const button = $("#sendMessage");
+  button.disabled = true;
+  const { error } = await supabase.from("messages").insert({
+    conversation_id: activeConversation.id, sender_id: currentUser.id, body
+  });
+  button.disabled = false;
+  if (error) { errorAt("#messageError", error.message); return; }
+  $("#messageInput").value = "";
+  await loadMessages();
+}
+async function closeMessageDialog() {
+  $("#messageDialog").close();
+  if (messageChannel && supabase) {
+    await supabase.removeChannel(messageChannel);
+    messageChannel = null;
+  }
+  activeConversation = null;
+}
+
 async function reviewClaim(claimId, nextStatus, button) {
   if (!["accepted", "rejected"].includes(nextStatus) || !currentUser) return;
   const claim = accountData.received.find((row) => row.id === claimId);
@@ -424,6 +537,9 @@ $("#login")?.addEventListener("click", openLogin);
 $("#account")?.addEventListener("click", openAccount);
 $("#profileForm")?.addEventListener("submit", saveProfile);
 document.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));
+$("#messageForm")?.addEventListener("submit", sendMessage);
+$("#closeMessages")?.addEventListener("click", closeMessageDialog);
+$("#messageDialog")?.addEventListener("close", async () => { if (messageChannel && supabase) { await supabase.removeChannel(messageChannel); messageChannel = null; } activeConversation = null; });
 $("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
 $("#googleLogin")?.addEventListener("click", signIn);
 $("#logout")?.addEventListener("click", signOut);
