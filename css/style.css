@@ -31,3 +31,29 @@
 .detail-placeholder{height:150px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,#fff0f6,#f9d7e5);font-size:48px;color:#d58baa;margin-bottom:18px}
 .detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
 .detail-meta span{padding:8px 10px;background:#fff3f8;border-radius:9px;color:#9c6580;font-size:10px}
+\n
+.account-dialog{width:min(650px,calc(100% - 24px))}
+.account-modal{gap:12px}
+.account-profile{display:flex;align-items:center;gap:13px;padding:14px;border:1px solid #f3e5eb;border-radius:15px;background:#fff8fb}
+.account-avatar{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(135deg,#f9dce8,#edb1ca);color:#a64e77;font-size:21px;font-weight:800}
+.account-profile strong,.account-profile small{display:block}
+.account-profile strong{font-size:14px;color:#443540}
+.account-profile small{font-size:10px;color:#a18e99;margin-top:4px}
+.profile-form{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.profile-form label{grid-column:1/-1}
+.profile-form input{min-width:0}
+.profile-form .button{height:42px;white-space:nowrap;padding:0 15px}
+.profile-form .form-error{grid-column:1/-1;margin:0}
+.account-tabs{display:flex;gap:5px;padding:5px;background:#fff4f8;border-radius:12px}
+.account-tab{flex:1;padding:10px 7px;border-radius:9px;background:transparent;color:#9b8190;font-size:11px;font-weight:700}
+.account-tab.active{background:#fff;color:#c05283;box-shadow:0 2px 9px #d7a9bd2a}
+.account-content{min-height:110px;max-height:270px;overflow:auto}
+.activity-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 4px;border-bottom:1px solid #f3e9ee}
+.activity-row strong,.activity-row small{display:block}
+.activity-row strong{font-size:12px;color:#4d3d48}
+.activity-row small{font-size:10px;color:#a08f99;margin-top:4px;line-height:1.5}
+.activity-side{text-align:right;flex-shrink:0}
+.activity-status{display:inline-block;padding:5px 8px;border-radius:20px;background:#fff0f6;color:#bf638a;font-size:9px;font-weight:700}
+.account-empty{text-align:center;padding:25px 10px;color:#a08f99;font-size:11px}
+.account-empty span{font-size:25px;color:#d98eac}
+@media(max-width:480px){.profile-form{grid-template-columns:1fr}.profile-form label{grid-column:auto}.account-tab{font-size:9px;padding:10px 4px}.activity-row{align-items:flex-start}.activity-side{max-width:100px}}
