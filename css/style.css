@@ -57,3 +57,13 @@
 .account-empty{text-align:center;padding:25px 10px;color:#a08f99;font-size:11px}
 .account-empty span{font-size:25px;color:#d98eac}
 @media(max-width:480px){.profile-form{grid-template-columns:1fr}.profile-form label{grid-column:auto}.account-tab{font-size:9px;padding:10px 4px}.activity-row{align-items:flex-start}.activity-side{max-width:100px}}
+.received-row{padding:14px 3px;border-bottom:1px solid #f3e9ee}
+.received-main>strong,.received-main>small{display:block}
+.received-main>strong{font-size:12px;color:#4d3d48}
+.received-main>small{font-size:10px;color:#9b8b96;line-height:1.6;margin:5px 0 8px;overflow-wrap:anywhere}
+.claim-review-actions{display:flex;gap:7px;margin-top:10px}
+.claim-review{padding:8px 13px;border-radius:9px;font-size:10px;font-weight:700}
+.claim-review.accept{background:#edf8f0;color:#4e9265}
+.claim-review.reject{background:#fff0f3;color:#c45b78}
+.account-tabs{overflow-x:auto}
+.account-tab{white-space:nowrap;min-width:74px}
