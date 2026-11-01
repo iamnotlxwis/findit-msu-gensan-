@@ -103,7 +103,7 @@ function render() {
 
 
 const accountDialog = $("#accountDialog");
-let accountData = { posts: [], claims: [], saved: [] };
+let accountData = { posts: [], claims: [], received: [], saved: [] };
 let accountTab = "posts";
 
 function statusLabel(status) {
@@ -117,7 +117,7 @@ function renderAccountTab() {
   if (!target) return;
   const rows = accountData[accountTab] || [];
   if (!rows.length) {
-    const messages = { posts: "You haven't posted any items yet.", claims: "You haven't submitted any claims yet.", saved: "You haven't saved any listings yet." };
+    const messages = { posts: "No posts yet.", claims: "No submitted claims yet.", received: "No one has claimed your listings yet.", saved: "No saved listings yet." };
     target.innerHTML = '<div class="account-empty"><span>♡</span><p>' + messages[accountTab] + '</p></div>';
     return;
   }
@@ -125,25 +125,54 @@ function renderAccountTab() {
     target.innerHTML = rows.map((item) => accountRow(item.title, item.item_type.toUpperCase() + " · " + item.campus_location, item.status, item.created_at)).join("");
   } else if (accountTab === "claims") {
     target.innerHTML = rows.map((claim) => accountRow(claim.items?.title || "Campus item", claim.items?.item_type?.toUpperCase() + " · " + claim.message, claim.status, claim.created_at)).join("");
-  } else {
+  } else if (accountTab === "saved") {
     target.innerHTML = rows.map((saved) => accountRow(saved.items?.title || "Campus item", (saved.items?.item_type || "").toUpperCase() + " · " + (saved.items?.campus_location || ""), saved.items?.status || "saved", saved.created_at)).join("");
+  } else {
+    target.innerHTML = rows.map((claim) => {
+      const item = claim.items || {};
+      const actions = claim.status === "pending"
+        ? '<div class="claim-review-actions"><button type="button" class="claim-review accept" data-claim-action="accepted" data-claim-id="' + esc(claim.id) + '">Accept</button><button type="button" class="claim-review reject" data-claim-action="rejected" data-claim-id="' + esc(claim.id) + '">Reject</button></div>'
+        : "";
+      return '<article class="received-row"><div class="received-main"><strong>' + esc(item.title || "Campus item") + '</strong><small>' + esc(item.item_type || "") + " · " + esc(claim.message) + '</small><span class="activity-status">' + esc(statusLabel(claim.status)) + '</span></div>' + actions + '</article>';
+    }).join("");
+    target.querySelectorAll("[data-claim-action]").forEach((button) => {
+      button.addEventListener("click", () => reviewClaim(button.dataset.claimId, button.dataset.claimAction, button));
+    });
   }
+}
+async function reviewClaim(claimId, nextStatus, button) {
+  if (!["accepted", "rejected"].includes(nextStatus) || !currentUser) return;
+  const claim = accountData.received.find((row) => row.id === claimId);
+  if (!claim || claim.status !== "pending") return;
+  const confirmed = window.confirm(nextStatus === "accepted" ? "Accept this claim and prepare a private handover conversation?" : "Reject this claim?");
+  if (!confirmed) return;
+  button.disabled = true;
+  const { error } = await supabase.from("claims").update({ status: nextStatus }).eq("id", claimId).eq("status", "pending");
+  if (error) { button.disabled = false; notify("Unable to update claim: " + error.message); return; }
+  if (nextStatus === "accepted") {
+    const participants = [currentUser.id, claim.claimant_id].sort();
+    const { error: conversationError } = await supabase.from("conversations").upsert({ item_id: claim.item_id, participant_one: participants[0], participant_two: participants[1] }, { onConflict: "item_id,participant_one,participant_two", ignoreDuplicates: true });
+    if (conversationError) { console.error("FindIt conversation setup:", conversationError); notify("Claim accepted, but the private chat could not be prepared yet."); }
+    else notify("Claim accepted. A private handover conversation is ready.");
+  } else notify("Claim rejected.");
+  await loadAccountData();
 }
 async function loadAccountData() {
   if (!supabase || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
-  const [posts, claims, saved] = await Promise.all([
+  const [posts, claims, received, saved] = await Promise.all([
     supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
+    supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("saved_items").select("id,created_at,items!saved_items_item_id_fkey(title,item_type,campus_location,status)").order("created_at", { ascending: false })
   ]);
-  const failed = [posts, claims, saved].find((result) => result.error);
+  const failed = [posts, claims, received, saved].find((result) => result.error);
   if (failed) {
     console.error("FindIt account activity:", failed.error);
     $("#accountContent").innerHTML = '<p class="form-error">Could not load your activity. ' + esc(failed.error.message) + '</p>';
     return;
   }
-  accountData = { posts: posts.data || [], claims: claims.data || [], saved: saved.data || [] };
+  accountData = { posts: posts.data || [], claims: claims.data || [], received: received.data || [], saved: saved.data || [] };
   renderAccountTab();
 }
 async function openAccount() {
