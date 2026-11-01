@@ -106,7 +106,7 @@ let accountData = { posts: [], claims: [], saved: [] };
 let accountTab = "posts";
 
 function statusLabel(status) {
-  return String(status || "unknown").replace(/_/g, " ").replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+  return String(status || "unknown").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 function accountRow(title, detail, status, date) {
   return '<article class="activity-row"><div><strong>' + esc(title) + '</strong><small>' + esc(detail || "") + '</small></div><div class="activity-side"><span class="activity-status">' + esc(statusLabel(status)) + '</span><small>' + esc(date ? new Date(date).toLocaleDateString() : "") + '</small></div></article>';
