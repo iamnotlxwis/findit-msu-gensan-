@@ -9,6 +9,8 @@ let filter = "All";
 let categoryFilter = "All";
 let sortOrder = "newest";
 let allItems = [];
+let savedItemIds = new Set();
+let activeDetailItem = null;
 
 const $ = (selector) => document.querySelector(selector);
 const grid = $("#items");
@@ -73,22 +75,75 @@ function render() {
       ? '<img src="' + esc(supabase.storage.from("item-images").getPublicUrl(item.image_path).data.publicUrl) + '" alt="Item photo" loading="lazy">'
       : '<span class="item-symbol">⌕</span>';
     const claim = currentUser && currentUser.id !== item.owner_id && item.status === "active"
-      ? '<button class="claim-button" data-claim="' + esc(item.id) + '">This is mine / Contact</button>'
+      ? '<button class="claim-button" data-claim="' + esc(item.id) + '">Submit a claim</button>'
       : "";
-    return '<article class="card"><div class="visual"><span class="tag ' + esc(item.item_type) + '">' +
+    const saved = currentUser
+      ? '<button class="save-button ' + (savedItemIds.has(item.id) ? 'is-saved' : '') + '" data-save="' + esc(item.id) + '" aria-label="Save item">' + (savedItemIds.has(item.id) ? '♥ Saved' : '♡ Save') + '</button>'
+      : "";
+    return '<article class="card"><button class="card-open" data-view="' + esc(item.id) + '" aria-label="View ' + esc(item.title) + '"><div class="visual"><span class="tag ' + esc(item.item_type) + '">' +
       esc(item.item_type.toUpperCase()) + '</span>' + photo +
       '</div><div class="body"><h3>' + esc(item.title) + '</h3><p>' +
       esc(item.description) + '</p><div class="meta">' + esc(item.category) + ' · ' +
       esc(item.campus_location) + ' · ' +
       esc(item.event_date || new Date(item.created_at).toLocaleDateString()) +
-      '</div>' + claim + '</div></article>';
+      '</div></div></button><div class="card-actions">' + saved + claim + '</div></article>';
   }).join("");
 
   grid.querySelectorAll("[data-claim]").forEach((button) => {
     button.addEventListener("click", () => openClaim(button.dataset.claim));
   });
+  grid.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => openItemDetails(button.dataset.view));
+  });
+  grid.querySelectorAll("[data-save]").forEach((button) => {
+    button.addEventListener("click", () => toggleSavedItem(button.dataset.save));
+  });
 }
 
+async function loadSavedItems() {
+  savedItemIds = new Set();
+  if (!supabase || !currentUser) return;
+  const { data, error } = await supabase.from("saved_items").select("item_id");
+  if (error) {
+    console.error("FindIt saved items:", error);
+    return;
+  }
+  savedItemIds = new Set((data || []).map((row) => row.item_id));
+}
+async function toggleSavedItem(itemId) {
+  if (!currentUser) return needLogin();
+  const isSaved = savedItemIds.has(itemId);
+  const result = isSaved
+    ? await supabase.from("saved_items").delete().eq("item_id", itemId).eq("user_id", currentUser.id)
+    : await supabase.from("saved_items").insert({ item_id: itemId, user_id: currentUser.id });
+  if (result.error) return notify("Couldn't update saved items: " + result.error.message);
+  if (isSaved) savedItemIds.delete(itemId);
+  else savedItemIds.add(itemId);
+  render();
+  notify(isSaved ? "Removed from saved items." : "Item saved.");
+}
+function openItemDetails(itemId) {
+  activeDetailItem = allItems.find((item) => item.id === itemId);
+  if (!activeDetailItem) return;
+  const item = activeDetailItem;
+  const imageUrl = item.image_path
+    ? supabase.storage.from("item-images").getPublicUrl(item.image_path).data.publicUrl
+    : "";
+  const image = imageUrl
+    ? '<img class="detail-image" src="' + esc(imageUrl) + '" alt="' + esc(item.title) + '">'
+    : '<div class="detail-placeholder">♡</div>';
+  const ownerCanClaim = currentUser && currentUser.id !== item.owner_id && item.status === "active";
+  $("#detailContent").innerHTML = image +
+    '<div class="eyebrow">' + esc(item.item_type.toUpperCase()) + ' ITEM</div>' +
+    '<h2>' + esc(item.title) + '</h2><p>' + esc(item.description) + '</p>' +
+    '<div class="detail-meta"><span>' + esc(item.category) + '</span><span>' + esc(item.campus_location) + '</span><span>' + esc(item.event_date || new Date(item.created_at).toLocaleDateString()) + '</span></div>' +
+    (ownerCanClaim ? '<button class="button button-primary full-button" id="detailClaim">Submit a claim ↗</button>' : "");
+  if (ownerCanClaim) $("#detailClaim").addEventListener("click", () => {
+    $("#itemDetails").close();
+    openClaim(item.id);
+  });
+  $("#itemDetails").showModal();
+}
 async function loadItems() {
   if (!supabase || !grid) return;
   grid.innerHTML = '<p class="loading">Loading campus listings...</p>';
@@ -127,6 +182,7 @@ async function refreshSession() {
   if (error) console.error("FindIt session:", error);
   currentUser = data?.session?.user || null;
   currentProfile = null;
+  await loadSavedItems();
   if (currentUser) {
     const result = await supabase.from("profiles")
       .select("display_name").eq("id", currentUser.id).maybeSingle();
@@ -268,6 +324,7 @@ $("#logout")?.addEventListener("click", signOut);
 });
 $("#postForm")?.addEventListener("submit", createItem);
 $("#claimForm")?.addEventListener("submit", submitClaim);
+$("#closeDetails")?.addEventListener("click", () => $("#itemDetails").close());
 $("#itemPhoto")?.addEventListener("change", () => {
   const file = $("#itemPhoto").files[0];
   $("#fileName").textContent = file ? file.name : "No file selected";
