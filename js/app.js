@@ -42,7 +42,8 @@ function esc(value = "") {
 function header() {
   if ($("#login")) $("#login").hidden = !!currentUser;
   if ($("#logout")) $("#logout").hidden = !currentUser;
-  if ($("#account")) $("#account").hidden = !currentUser;\n  if ($("#userLabel")) $("#userLabel").textContent =
+  if ($("#account")) $("#account").hidden = !currentUser;
+  if ($("#userLabel")) $("#userLabel").textContent =
     currentProfile?.display_name || currentUser?.email || "";
 }
 function openLogin() {
@@ -175,7 +176,8 @@ async function saveProfile(event) {
   $("#accountAvatar").textContent = displayName.charAt(0).toUpperCase();
   notify("Your profile has been updated.");
 }
-\nasync function loadSavedItems() {
+
+async function loadSavedItems() {
   savedItemIds = new Set();
   if (!supabase || !currentUser) return;
   const { data, error } = await supabase.from("saved_items").select("item_id");
@@ -389,7 +391,11 @@ async function submitClaim(event) {
   notify("Claim request sent to the item owner.");
 }
 
-$("#login")?.addEventListener("click", openLogin);\n$("#account")?.addEventListener("click", openAccount);\n$("#profileForm")?.addEventListener("submit", saveProfile);\ndocument.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));\n$("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
+$("#login")?.addEventListener("click", openLogin);
+$("#account")?.addEventListener("click", openAccount);
+$("#profileForm")?.addEventListener("submit", saveProfile);
+document.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));
+$("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
 $("#googleLogin")?.addEventListener("click", signIn);
 $("#logout")?.addEventListener("click", signOut);
 ["#post", "#post2", "#report"].forEach((selector) => {
