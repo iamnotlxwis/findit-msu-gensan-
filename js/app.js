@@ -4,6 +4,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Lck0L35G-vtAqFRQfMUH2A_fhQ2neY4
 let supabase = null;
 let currentUser = null;
 let currentProfile = null;
+let currentRole = null;
 let selectedItem = null;
 let filter = "All";
 let categoryFilter = "All";
@@ -43,6 +44,7 @@ function header() {
   if ($("#login")) $("#login").hidden = !!currentUser;
   if ($("#logout")) $("#logout").hidden = !currentUser;
   if ($("#account")) $("#account").hidden = !currentUser;
+  if ($("#adminDashboard")) $("#adminDashboard").hidden = currentRole !== "admin";
   if ($("#userLabel")) $("#userLabel").textContent =
     currentProfile?.display_name || currentUser?.email || "";
 }
@@ -312,6 +314,74 @@ async function deleteOwnPost(itemId, button) {
   notify("Your post has been removed.");
 }
 
+async function openAdminDashboard() {
+  if (!currentUser || currentRole !== "admin") return notify("Admin access required.");
+  $("#adminDialog").showModal();
+  await loadAdminDashboard();
+}
+
+async function loadAdminDashboard() {
+  const target = $("#adminContent");
+  target.innerHTML = '<p class="loading-state">Loading moderation queue...</p>';
+  const [items, reports] = await Promise.all([
+    supabase.from("items")
+      .select("id,title,item_type,status,moderation_status,created_at,owner_id,profiles!items_owner_id_fkey(display_name)")
+      .order("created_at", { ascending: false }).limit(100),
+    supabase.from("reports")
+      .select("id,item_id,reporter_id,reason,status,created_at,items!reports_item_id_fkey(title),profiles!reports_reporter_id_fkey(display_name)")
+      .order("created_at", { ascending: false }).limit(100)
+  ]);
+  if (items.error || reports.error) {
+    target.innerHTML = '<p class="form-error">Could not load admin data: ' +
+      esc(items.error?.message || reports.error?.message) + '</p>';
+    return;
+  }
+  const itemRows = items.data || [];
+  const reportRows = reports.data || [];
+  const pending = itemRows.filter(row => row.moderation_status === "pending");
+  target.innerHTML =
+    '<div class="admin-stats"><div><strong>' + itemRows.length + '</strong><small>Listings</small></div><div><strong>' + pending.length + '</strong><small>Pending review</small></div><div><strong>' + reportRows.filter(row => row.status === "open").length + '</strong><small>Open reports</small></div></div>' +
+    '<h3>Listing moderation</h3>' +
+    (itemRows.length ? itemRows.map(row =>
+      '<article class="admin-row"><div class="admin-row-main"><strong>' + esc(row.title) + '</strong><small>' +
+      esc(row.item_type.toUpperCase() + " · " + (row.profiles?.display_name || "Student")) +
+      '</small><span class="activity-status">' + esc(statusLabel(row.moderation_status)) + ' · ' + esc(statusLabel(row.status)) +
+      '</span></div><div class="admin-actions">' +
+      (row.moderation_status !== "published" ? '<button class="claim-review accept" data-admin-item="' + esc(row.id) + '" data-next-moderation="published">Publish</button>' : '') +
+      (row.moderation_status !== "rejected" ? '<button class="claim-review reject" data-admin-item="' + esc(row.id) + '" data-next-moderation="rejected">Reject</button>' : '') +
+      '</div></article>'
+    ).join("") : '<p class="account-empty">No listings found.</p>') +
+    '<h3>Community reports</h3>' +
+    (reportRows.length ? reportRows.map(row =>
+      '<article class="admin-row"><div class="admin-row-main"><strong>' + esc(row.items?.title || "Removed listing") + '</strong><small>' +
+      esc(row.profiles?.display_name || "Student") + ' · ' + esc(new Date(row.created_at).toLocaleDateString()) +
+      '</small><p>' + esc(row.reason) + '</p><span class="activity-status">' + esc(statusLabel(row.status)) +
+      '</span></div><div class="admin-actions">' +
+      (row.status === "open" ? '<button class="claim-review accept" data-admin-report="' + esc(row.id) + '" data-next-report="reviewed">Mark reviewed</button><button class="claim-review reject" data-admin-report="' + esc(row.id) + '" data-next-report="dismissed">Dismiss</button>' : '') +
+      '</div></article>'
+    ).join("") : '<p class="account-empty">No reports submitted.</p>');
+
+  target.querySelectorAll("[data-admin-item]").forEach(button => button.addEventListener("click", async () => {
+    button.disabled = true;
+    const { error } = await supabase.from("items")
+      .update({ moderation_status: button.dataset.nextModeration })
+      .eq("id", button.dataset.adminItem);
+    if (error) { button.disabled = false; return notify("Moderation failed: " + error.message); }
+    notify("Listing moderation updated.");
+    await loadAdminDashboard();
+    await loadItems();
+  }));
+  target.querySelectorAll("[data-admin-report]").forEach(button => button.addEventListener("click", async () => {
+    button.disabled = true;
+    const { error } = await supabase.from("reports")
+      .update({ status: button.dataset.nextReport })
+      .eq("id", button.dataset.adminReport);
+    if (error) { button.disabled = false; return notify("Report update failed: " + error.message); }
+    notify("Report status updated.");
+    await loadAdminDashboard();
+  }));
+}
+
 async function loadAccountData() {
   if (!supabase || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
@@ -443,8 +513,11 @@ async function refreshSession() {
   if (error) console.error("FindIt session:", error);
   currentUser = data?.session?.user || null;
   currentProfile = null;
+  currentRole = null;
   await loadSavedItems();
   if (currentUser) {
+    const roleResult = await supabase.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle();
+    if (!roleResult.error) currentRole = roleResult.data?.role || null;
     const result = await supabase.from("profiles")
       .select("display_name").eq("id", currentUser.id).maybeSingle();
     if (!result.error) currentProfile = result.data;
@@ -509,6 +582,7 @@ async function signOut() {
   if (error) return notify(error.message);
   currentUser = null;
   currentProfile = null;
+  currentRole = null;
   header();
   render();
   notify("Signed out.");
@@ -611,6 +685,7 @@ async function submitClaim(event) {
 
 $("#login")?.addEventListener("click", openLogin);
 $("#account")?.addEventListener("click", openAccount);
+$("#adminDashboard")?.addEventListener("click", openAdminDashboard);
 $("#profileForm")?.addEventListener("submit", saveProfile);
 document.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));
 $("#messageForm")?.addEventListener("submit", sendMessage);
