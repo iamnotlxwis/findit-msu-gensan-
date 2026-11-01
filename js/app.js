@@ -46,6 +46,7 @@ function header() {
   if ($("#logout")) $("#logout").hidden = !currentUser;
   if ($("#account")) $("#account").hidden = !currentUser;
   if ($("#notificationsButton")) $("#notificationsButton").hidden = !currentUser;
+  if ($("#preferencesButton")) $("#preferencesButton").hidden = !currentUser;
   if ($("#adminDashboard")) $("#adminDashboard").hidden = currentRole !== "admin";
   if ($("#userLabel")) $("#userLabel").textContent =
     currentProfile?.display_name || currentUser?.email || "";
