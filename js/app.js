@@ -556,7 +556,7 @@ async function loadAccountData() {
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
   const [posts, claims, received, reports] = await Promise.all([
     supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type,owner_id)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
+    supabase.from("claims").select("id,item_id,message,status,created_at,items!claims_item_id_fkey(title,item_type,owner_id)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("reports").select("id,reason,status,created_at,items!reports_item_id_fkey(title)").eq("reporter_id", currentUser.id).order("created_at", { ascending: false })
   ]);
@@ -593,7 +593,7 @@ async function saveProfile(event) {
   button.disabled = false;
   button.textContent = "Save profile";
   if (error) return errorAt("#profileError", error.message);
-  currentProfile = data;
+  currentProfile = { ...currentProfile, ...data };
   header();
   $("#accountName").textContent = displayName;
   $("#accountAvatar").textContent = displayName.charAt(0).toUpperCase();
@@ -769,6 +769,10 @@ async function createItem(event) {
     return errorAt("#postError", "Please write at least 5 characters in the description.");
   }
 
+  const files = Array.from($("#itemPhoto").files || []);
+  if (files.length > 5) return errorAt("#postError", "Choose no more than 5 photos.");
+  const invalidFile = files.find(file => !["image/jpeg","image/png","image/webp"].includes(file.type) || file.size > 5242880);
+  if (invalidFile) return errorAt("#postError", "Each photo must be JPG, PNG or WebP and under 5 MB.");
   const button = $("#submitItem");
   button.disabled = true;
   button.textContent = "Publishing...";
@@ -789,8 +793,6 @@ async function createItem(event) {
     const { data, error } = await supabase.from("items").insert(item).select("id").single();
     if (error) throw error;
 
-    const files = Array.from($("#itemPhoto").files || []);
-    if (files.length > 5) throw new Error("Choose no more than 5 photos.");
     const uploadedPaths = [];
     for (const file of files) uploadedPaths.push(await uploadPhoto(file, data.id));
     if (uploadedPaths.length) {
@@ -801,6 +803,8 @@ async function createItem(event) {
 
     submission.close();
     $("#postForm").reset();
+    $("#photoPreviews").innerHTML = "";
+    $("#fileName").textContent = "No files selected";
     notify("Your item has been posted.");
     await loadItems();
   } catch (error) {
@@ -922,7 +926,8 @@ document.querySelectorAll(".filter").forEach((button) => {
 
 async function loadPreferences() {
   if (!currentUser || !supabase) return;
-  const {data} = await supabase.from("user_preferences").select("theme,email_notifications").eq("user_id",currentUser.id).maybeSingle();
+  const {data, error} = await supabase.from("user_preferences").select("theme,email_notifications").eq("user_id",currentUser.id).maybeSingle();
+  if (error) console.warn("FindIt preferences:", error.message);
   const theme = data?.theme || localStorage.getItem("finditTheme") || "light";
   $("#themePreference").value = theme;
   $("#emailNotifications").checked = data?.email_notifications ?? true;
@@ -937,6 +942,7 @@ function setTheme(theme) {
 async function savePreferences(event) {
   event.preventDefault();
   const theme = $("#themePreference").value;
+  if (!currentUser || !supabase) return;
   const payload = {user_id:currentUser.id,theme,email_notifications:$("#emailNotifications").checked,updated_at:new Date().toISOString()};
   const {error} = await supabase.from("user_preferences").upsert(payload,{onConflict:"user_id"});
   if (error) { $("#preferencesError").textContent = error.message; return; }
@@ -965,7 +971,9 @@ async function startFindIt() {
       render();
     });
 
+    setTheme(localStorage.getItem("finditTheme") || "light");
     await refreshSession();
+    await loadPreferences();
     await loadItems();
     clearNotice();
   } catch (error) {
