@@ -55,6 +55,7 @@ function openLogin() {
   if (!auth.open) auth.showModal();
 }
 async function needLogin() {
+  if (currentUser && currentProfile?.is_suspended) { notify("This account is currently suspended. Contact a FindIt administrator."); return false; }
   if (currentUser) return true;
   openLogin();
   errorAt("#authError", "Sign in with your Google account to continue.");
@@ -721,7 +722,7 @@ async function refreshSession() {
     const roleResult = await supabase.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle();
     if (!roleResult.error) currentRole = roleResult.data?.role || null;
     const result = await supabase.from("profiles")
-      .select("display_name").eq("id", currentUser.id).maybeSingle();
+      .select("display_name,is_suspended,reputation_points,successful_returns").eq("id", currentUser.id).maybeSingle();
     if (!result.error) currentProfile = result.data;
   }
   header();
