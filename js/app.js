@@ -170,6 +170,11 @@ async function createItem(event) {
   if (!supabase) return errorAt("#postError", "FindIt is still connecting. Please try again.");
   if (!await needLogin()) return;
 
+  const description = $("#itemDescription").value.trim();
+  if (description.length < 5) {
+    return errorAt("#postError", "Please write at least 5 characters in the description.");
+  }
+
   const button = $("#submitItem");
   button.disabled = true;
   button.textContent = "Publishing...";
@@ -181,7 +186,7 @@ async function createItem(event) {
       category: $("#itemCategory").value,
       campus_location: $("#itemLocation").value.trim(),
       event_date: $("#itemDate").value || null,
-      description: $("#itemDescription").value.trim()
+      description
     };
     const { data, error } = await supabase.from("items").insert(item).select("id").single();
     if (error) throw error;
