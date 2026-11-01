@@ -91,3 +91,9 @@
 .message-compose .button{height:43px}
 .message-modal>.form-error{margin:3px 0 0}
 @media(max-width:480px){.message-dialog{width:calc(100% - 12px);height:86vh}.message-modal{padding:14px}.message-compose{gap:6px}.message-compose .button{padding:10px 12px}}
+
+.auth-divider{display:flex;align-items:center;gap:12px;color:#b6a3ae;font-size:9px;font-weight:700;margin:3px 0}
+.auth-divider:before,.auth-divider:after{content:"";height:1px;background:#f0e4ea;flex:1}
+#otpEmailForm,#otpVerifyForm{display:flex;flex-direction:column;gap:9px}
+#otpEmailForm label,#otpVerifyForm label{margin-top:0}
+#otpVerifyForm[hidden]{display:none}
