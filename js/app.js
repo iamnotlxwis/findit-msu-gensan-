@@ -12,6 +12,7 @@ let sortOrder = "newest";
 let allItems = [];
 let savedItemIds = new Set();
 let activeDetailItem = null;
+let activeReportItem = null;
 
 const $ = (selector) => document.querySelector(selector);
 const grid = $("#items");
@@ -468,13 +469,67 @@ function openItemDetails(itemId) {
     '<div class="eyebrow">' + esc(item.item_type.toUpperCase()) + ' ITEM</div>' +
     '<h2>' + esc(item.title) + '</h2><p>' + esc(item.description) + '</p>' +
     '<div class="detail-meta"><span>' + esc(item.category) + '</span><span>' + esc(item.campus_location) + '</span><span>' + esc(item.event_date || new Date(item.created_at).toLocaleDateString()) + '</span></div>' +
-    (ownerCanClaim ? '<button class="button button-primary full-button" id="detailClaim">Submit a claim ↗</button>' : "");
+    (ownerCanClaim ? '<button class="button button-primary full-button" id="detailClaim">Submit a claim ↗</button>' : "") +
+    (currentUser && currentUser.id !== item.owner_id ? '<button class="button button-secondary full-button report-listing-button" id="detailReport">Report this listing</button>' : "");
   if (ownerCanClaim) $("#detailClaim").addEventListener("click", () => {
     $("#itemDetails").close();
     openClaim(item.id);
   });
+  if (currentUser && currentUser.id !== item.owner_id) {
+    $("#detailReport")?.addEventListener("click", () => {
+      $("#itemDetails").close();
+      openReport(item.id);
+    });
+  }
   $("#itemDetails").showModal();
 }
+function openReport(itemId) {
+  if (!currentUser) return needLogin();
+  activeReportItem = allItems.find((item) => item.id === itemId);
+  if (!activeReportItem || activeReportItem.owner_id === currentUser.id) return;
+  $("#reportItemTitle").textContent = activeReportItem.title;
+  $("#reportForm").reset();
+  errorAt("#reportError");
+  $("#reportDialog").showModal();
+}
+
+async function submitReport(event) {
+  event.preventDefault();
+  errorAt("#reportError");
+  if (!currentUser || !activeReportItem) return;
+  const category = $("#reportReason").value;
+  const details = $("#reportDetails").value.trim();
+  const reason = category + (details ? ": " + details : "");
+  if (reason.length > 1000) return errorAt("#reportError", "Please keep your report under 1,000 characters.");
+
+  const button = $("#submitReport");
+  button.disabled = true;
+  button.textContent = "Sending...";
+  const existing = await supabase.from("reports").select("id")
+    .eq("item_id", activeReportItem.id).eq("reporter_id", currentUser.id).limit(1);
+  if (existing.error) {
+    button.disabled = false;
+    button.textContent = "Submit report";
+    return errorAt("#reportError", "Could not check your previous reports. " + existing.error.message);
+  }
+  if (existing.data?.length) {
+    button.disabled = false;
+    button.textContent = "Submit report";
+    return errorAt("#reportError", "You've already reported this listing.");
+  }
+
+  const { error } = await supabase.from("reports").insert({
+    item_id: activeReportItem.id, reporter_id: currentUser.id, reason
+  });
+  button.disabled = false;
+  button.textContent = "Submit report";
+  if (error) return errorAt("#reportError", "Could not submit report: " + error.message);
+
+  $("#reportDialog").close();
+  activeReportItem = null;
+  notify("Thanks. Your report has been sent to the FindIt admin.");
+}
+
 async function loadItems() {
   if (!supabase || !grid) return;
   grid.innerHTML = '<p class="loading">Loading campus listings...</p>';
@@ -703,6 +758,7 @@ $("#logout")?.addEventListener("click", signOut);
 });
 $("#postForm")?.addEventListener("submit", createItem);
 $("#claimForm")?.addEventListener("submit", submitClaim);
+$("#reportForm")?.addEventListener("submit", submitReport);
 document.querySelectorAll(".close-button").forEach((button) => {
   button.addEventListener("click", (event) => {
     event.preventDefault();
