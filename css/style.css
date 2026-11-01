@@ -174,3 +174,21 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:#df91b1!important
 @media(max-width:900px){.hero{padding-top:65px;min-height:0}.hero h1{font-size:clamp(43px,8vw,64px)}.desktop-nav{gap:18px}.header-actions{gap:3px}}
 @media(max-width:650px){.site-header{height:auto;min-height:68px;padding:12px 4%;gap:8px;flex-wrap:wrap}.logo{font-size:25px}.desktop-nav{order:3;width:100%;justify-content:center;border-top:1px solid #f5e9ee;padding-top:9px;font-size:11px}.header-actions{margin-left:auto;gap:0}.header-actions .text-button{padding:9px 7px;font-size:10px}.header-actions .button{padding:10px 12px;font-size:10px}.user-label{display:none}.hero{grid-template-columns:1fr;padding:55px 6% 35px;gap:12px}.hero h1{font-size:clamp(42px,12vw,58px);letter-spacing:-3.5px}.hero-description{font-size:13px}.hero-visual{height:300px}.visual-board{width:88%;padding:17px}.visual-note{transform:scale(.86)}.stats-section{margin:0 5%;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat-card{padding:14px}.browse-section,.how-section{padding:65px 5%}.section-heading{gap:12px;align-items:flex-start;flex-direction:column}.browse-toolbar{gap:10px}.search-box{width:100%}.filter-group{width:100%;justify-content:space-between}.category-filter{flex:1;min-width:0}.listing-grid{grid-template-columns:1fr;gap:14px}.community-banner{margin:0 5% 55px;padding:28px;border-radius:20px}.site-footer{padding:24px 5%;gap:10px;flex-wrap:wrap}.notification-row{align-items:flex-start;flex-direction:column}.post-row-actions{width:100%}.modal{width:min(94vw,540px);padding:25px 20px}.account-tabs{margin-left:-4px;margin-right:-4px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Listing card polish */
+.card{border:1px solid #f0e2e9;border-radius:22px;background:#fff;overflow:hidden;box-shadow:0 12px 34px rgba(91,51,70,.055);transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
+.card:hover{transform:translateY(-4px);border-color:#e9bfd0;box-shadow:0 20px 44px rgba(130,73,100,.11)}
+.card-open{display:block;width:100%;text-align:left;background:transparent;color:inherit}
+.card .visual{height:205px;position:relative;display:grid;place-items:center;overflow:hidden;background:linear-gradient(135deg,#fff0f6,#f8e6ee)}
+.card .visual img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .35s ease}
+.card:hover .visual img{transform:scale(1.035)}
+.card .item-symbol{font-size:54px;color:#d78aaa}
+.card .tag{position:absolute;z-index:1;top:14px;left:14px;padding:7px 10px;border-radius:30px;background:rgba(255,255,255,.92);font-size:9px;font-weight:800;letter-spacing:.7px}
+.card .body{padding:17px 18px 13px}
+.card .body h3{font-size:16px;letter-spacing:-.35px;margin:0 0 7px}
+.card .body p{font-size:12px;line-height:1.65;color:#897b86;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:39px}
+.card .meta{font-size:10px;line-height:1.6;color:#a08f99}
+.card-actions{display:flex;align-items:center;gap:9px;padding:0 18px 17px}
+.card-actions button{border-radius:10px}
+.card:focus-within{outline:3px solid rgba(216,95,145,.16);outline-offset:2px}
