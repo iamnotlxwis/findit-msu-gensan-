@@ -34,12 +34,16 @@ The Google `hd` parameter is only a sign-in hint. A database trigger independent
 - Never place a Supabase service_role or secret key in frontend code. The publishable key is designed to be public.
 
 ## Current feature status
-- Live public feed, search and lost/found filters
-- Google OAuth frontend (requires provider credentials above)
-- Verified school-domain enforcement in the database
-- Create listing and upload one item photo
-- Submit claim request
-- Messaging database tables exist; messaging UI/realtime notifications are not implemented yet
-- Admin moderation dashboard is not implemented yet
 
-Open `index.html` through a local web server for local testing.
+- Live public feed with search, lost/found filters, category, date, building and sort filters
+- Google OAuth sign-in with verified MSU Gensan email-domain enforcement
+- Create listings with up to five photos, building/landmark and a claim-verification question
+- Claims, private conversations and realtime notifications
+- Two-party handover confirmation
+- Student reputation points for completed returns
+- Recently viewed listings and personal report history
+- Admin listing/report moderation, student suspension controls, configurable listing expiry, activity history and CSV export
+- Light, dark and system appearance preferences
+- Listing expiry runs daily through Supabase pg_cron
+
+The frontend is plain HTML, CSS and JavaScript. Open `index.html` through a local web server for local testing.
