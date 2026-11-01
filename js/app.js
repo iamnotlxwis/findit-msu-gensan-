@@ -744,7 +744,7 @@ async function loadItems() {
     .limit(60);
 
   if (error) {
-    grid.innerHTML = '<div class="empty-board empty-board-error"><span class="empty-board-mark">!</span><h3>Listings couldn't load</h3><p>' + esc(error.message) + '</p><button type="button" class="text-button" id="retryListings">Try again</button></div>';
+    grid.innerHTML = '<div class="empty-board empty-board-error"><span class="empty-board-mark">!</span><h3>Listings couldn\'t load</h3><p>' + esc(error.message) + '</p><button type="button" class="text-button" id="retryListings">Try again</button></div>';
     if ($("#count")) $("#count").textContent = "UNAVAILABLE";
     console.error("FindIt listings:", error);
     $("#retryListings")?.addEventListener("click", loadItems);
