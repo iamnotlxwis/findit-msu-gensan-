@@ -17,8 +17,10 @@ function verifySupabaseHook(rawBody, headers, secret) {
 
   return signatures.split(" ").some((entry) => {
     const parts = entry.split(",");
-    return parts.length === 2 && parts[0] === "v1" &&
-      crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expected));
+    const received = Buffer.from(parts[1] || "");
+    const wanted = Buffer.from(expected);
+    return parts.length === 2 && parts[0] === "v1" && received.length === wanted.length &&
+      crypto.timingSafeEqual(received, wanted);
   });
 }
 
@@ -38,7 +40,9 @@ module.exports = async function handler(req, res) {
 
   let rawBody = "";
   try {
-    rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body || {});
+    const chunks = [];
+    for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    rawBody = Buffer.concat(chunks).toString("utf8");
     if (!verifySupabaseHook(rawBody, req.headers, hookSecret)) {
       return res.status(401).json({ error: "Invalid webhook signature." });
     }
@@ -74,3 +78,5 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "Unable to deliver verification email." });
   }
 };
+
+module.exports.config = { api: { bodyParser: false } };
