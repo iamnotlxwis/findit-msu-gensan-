@@ -97,3 +97,24 @@
 #otpEmailForm,#otpVerifyForm{display:flex;flex-direction:column;gap:9px}
 #otpEmailForm label,#otpVerifyForm label{margin-top:0}
 #otpVerifyForm[hidden]{display:none}
+
+
+.admin-modal { max-width: 760px; }
+.admin-modal h3 { margin: 28px 0 12px; font-size: 17px; }
+.admin-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
+.admin-stats > div { padding: 16px; border: 1px solid var(--border, #eadde3); border-radius: 14px; background: var(--surface, #fff); }
+.admin-stats strong, .admin-stats small { display: block; }
+.admin-stats strong { font-size: 25px; }
+.admin-stats small { color: var(--muted, #8a7b83); margin-top: 4px; }
+.admin-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 0; border-top: 1px solid var(--border, #eadde3); }
+.admin-row-main { min-width: 0; flex: 1; }
+.admin-row-main strong, .admin-row-main small { display: block; }
+.admin-row-main small { color: var(--muted, #8a7b83); margin: 5px 0; }
+.admin-row-main p { margin: 8px 0; overflow-wrap: anywhere; }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+@media (max-width: 600px) {
+  .admin-row { align-items: flex-start; flex-direction: column; }
+  .admin-actions { width: 100%; }
+  .admin-stats { gap: 7px; }
+  .admin-stats > div { padding: 11px; }
+}
