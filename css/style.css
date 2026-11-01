@@ -209,3 +209,12 @@ html[data-theme="dark"] .stat-card,html[data-theme="dark"] .card,html[data-theme
 html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#19151c;color:var(--ink);border-color:#493b48}
 html[data-theme="dark"] .button-secondary{background:#302431;color:#f1b5ce;border-color:#574153}
 html[data-theme="dark"] .browse-bottom,html[data-theme="dark"] .hero-description,html[data-theme="dark"] .section-heading p{color:#b7a7b3}
+
+.advanced-filters{position:relative;flex:0 0 auto}
+.advanced-filters summary{list-style:none;cursor:pointer;padding:12px 15px;border:1px solid #f0e4ea;border-radius:12px;background:#fff;color:#8e6177;font-size:11px;font-weight:700;white-space:nowrap}
+.advanced-filters summary::-webkit-details-marker{display:none}
+.advanced-filters summary span{margin-left:8px;color:var(--pink)}
+.advanced-filter-panel{position:absolute;z-index:8;right:0;top:calc(100% + 8px);width:260px;padding:16px;border:1px solid #f0e4ea;border-radius:16px;background:#fff;box-shadow:0 16px 42px rgba(91,51,70,.12);display:grid;gap:12px}
+.advanced-filter-panel label{display:grid;gap:6px;color:#8e7a86;font-size:10px;font-weight:700}
+.advanced-filter-panel .category-filter{width:100%;min-width:0}
+html[data-theme="dark"] .advanced-filters summary,html[data-theme="dark"] .advanced-filter-panel{background:#211b24;border-color:#403340;color:#f1c5d8}
