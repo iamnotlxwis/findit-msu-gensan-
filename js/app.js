@@ -111,6 +111,7 @@ let accountTab = "posts";
 let conversations = [];
 let activeConversation = null;
 let messageChannel = null;
+let notificationChannel = null;
 
 function statusLabel(status) {
   return String(status || "unknown").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -133,9 +134,11 @@ function renderAccountTab() {
       '<article class="received-row"><div class="received-main"><strong>' + esc(item.title) +
       '</strong><small>' + esc(item.item_type.toUpperCase() + " · " + item.campus_location) +
       '</small><span class="activity-status">' + esc(statusLabel(item.status)) +
-      '</span></div><button type="button" class="claim-review reject" data-delete-post="' +
-      esc(item.id) + '">Remove post</button></article>'
+      '</span></div><div class="post-row-actions">' +
+      (item.status !== "returned" && item.status !== "archived" ? '<button type="button" class="claim-review accept" data-return-post="' + esc(item.id) + '">Mark returned</button>' : '') +
+      '<button type="button" class="claim-review reject" data-delete-post="' + esc(item.id) + '">Remove post</button></div></article>'
     ).join("");
+    target.querySelectorAll("[data-return-post]").forEach((button) => button.addEventListener("click", () => markPostReturned(button.dataset.returnPost, button)));
     target.querySelectorAll("[data-delete-post]").forEach((button) => {
       button.addEventListener("click", () => deleteOwnPost(button.dataset.deletePost, button));
     });
@@ -383,6 +386,82 @@ async function loadAdminDashboard() {
   }));
 }
 
+async function loadNotifications() {
+  if (!currentUser || !supabase) return;
+  const { data, error } = await supabase.from("notifications")
+    .select("id,title,body,read_at,created_at")
+    .order("created_at", { ascending: false }).limit(40);
+  if (error) {
+    $("#notificationList").innerHTML = '<p class="form-error">Could not load notifications: ' + esc(error.message) + '</p>';
+    return;
+  }
+  const rows = data || [];
+  const unread = rows.filter(row => !row.read_at).length;
+  $("#notificationCount").textContent = unread > 9 ? "9+" : String(unread);
+  $("#notificationCount").hidden = unread === 0;
+  $("#notificationList").innerHTML = rows.length ? rows.map(row =>
+    '<article class="notification-row ' + (row.read_at ? "is-read" : "is-unread") + '">' +
+    '<div><strong>' + esc(row.title) + '</strong><p>' + esc(row.body) + '</p><small>' +
+    esc(new Date(row.created_at).toLocaleString()) + '</small></div>' +
+    (!row.read_at ? '<button type="button" class="notification-read" data-read-notification="' + esc(row.id) + '">Mark read</button>' : '') +
+    '</article>'
+  ).join("") : '<div class="account-empty"><span>♡</span><p>You are all caught up.</p></div>';
+
+  $("#notificationList").querySelectorAll("[data-read-notification]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const { error: updateError } = await supabase.from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", button.dataset.readNotification).eq("user_id", currentUser.id);
+      if (updateError) return notify("Couldn't update notification: " + updateError.message);
+      await loadNotifications();
+    });
+  });
+}
+async function openNotifications() {
+  if (!await needLogin()) return;
+  $("#notificationDialog").showModal();
+  await loadNotifications();
+}
+async function markAllNotificationsRead() {
+  if (!currentUser) return;
+  const { error } = await supabase.from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("user_id", currentUser.id).is("read_at", null);
+  if (error) return notify("Couldn't mark notifications as read: " + error.message);
+  await loadNotifications();
+}
+function subscribeNotifications() {
+  if (!supabase || !currentUser) return;
+  if (notificationChannel) supabase.removeChannel(notificationChannel);
+  notificationChannel = supabase.channel("findit-notifications-" + currentUser.id)
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "notifications",
+      filter: "user_id=eq." + currentUser.id
+    }, () => {
+      loadNotifications();
+      notify("You have a new notification.");
+    }).subscribe();
+  loadNotifications();
+}
+
+async function markPostReturned(itemId, button) {
+  if (!currentUser) return;
+  const confirmed = window.confirm("Mark this item as returned? This will close the listing and complete any accepted claim.");
+  if (!confirmed) return;
+  button.disabled = true;
+  const { error } = await supabase.from("items").update({ status: "returned" })
+    .eq("id", itemId).eq("owner_id", currentUser.id);
+  if (error) {
+    button.disabled = false;
+    return notify("Couldn't update listing: " + error.message);
+  }
+  await supabase.from("claims").update({ status: "completed" })
+    .eq("item_id", itemId).eq("status", "accepted");
+  notify("Item marked as returned. Nice one!");
+  await loadAccountData();
+  await loadItems();
+}
+
 async function loadAccountData() {
   if (!supabase || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
@@ -568,6 +647,8 @@ async function refreshSession() {
   if (error) console.error("FindIt session:", error);
   currentUser = data?.session?.user || null;
   currentProfile = null;
+  if (notificationChannel) { await supabase.removeChannel(notificationChannel); notificationChannel = null; }
+  if (currentUser) subscribeNotifications();
   currentRole = null;
   await loadSavedItems();
   if (currentUser) {
@@ -638,6 +719,7 @@ async function signOut() {
   currentUser = null;
   currentProfile = null;
   currentRole = null;
+  if (notificationChannel && supabase) { await supabase.removeChannel(notificationChannel); notificationChannel = null; }
   header();
   render();
   notify("Signed out.");
@@ -741,6 +823,8 @@ async function submitClaim(event) {
 $("#login")?.addEventListener("click", openLogin);
 $("#account")?.addEventListener("click", openAccount);
 $("#adminDashboard")?.addEventListener("click", openAdminDashboard);
+$("#notificationsButton")?.addEventListener("click", openNotifications);
+$("#markAllNotifications")?.addEventListener("click", markAllNotificationsRead);
 $("#profileForm")?.addEventListener("submit", saveProfile);
 document.querySelectorAll("[data-account-tab]").forEach((button) => button.addEventListener("click", () => { accountTab = button.dataset.accountTab; document.querySelectorAll(".account-tab").forEach((tab) => tab.classList.toggle("active", tab === button)); renderAccountTab(); }));
 $("#messageForm")?.addEventListener("submit", sendMessage);
@@ -822,6 +906,7 @@ async function startFindIt() {
     supabase.auth.onAuthStateChange((_event, session) => {
       currentUser = session?.user || null;
       currentProfile = null;
+      if (currentUser) subscribeNotifications();
       header();
       render();
     });
