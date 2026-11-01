@@ -53,7 +53,7 @@ function openLogin() {
 async function needLogin() {
   if (currentUser) return true;
   openLogin();
-  errorAt("#authError", "Sign in with your MSU Gensan Google account to continue.");
+  errorAt("#authError", "Sign in with Google or your email address to continue.");
   return false;
 }
 
