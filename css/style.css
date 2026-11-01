@@ -67,3 +67,27 @@
 .claim-review.reject{background:#fff0f3;color:#c45b78}
 .account-tabs{overflow-x:auto}
 .account-tab{white-space:nowrap;min-width:74px}
+.conversation-row{width:100%;display:flex;align-items:center;gap:12px;padding:13px 5px;text-align:left;background:#fff;border-bottom:1px solid #f3e9ee}
+.conversation-avatar{width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;border-radius:13px;background:#fff0f6;color:#c75f8c;font-size:20px}
+.conversation-info{flex:1;min-width:0}
+.conversation-info strong,.conversation-info small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-info strong{font-size:12px;color:#4d3d48}
+.conversation-info small{font-size:10px;color:#a08f99;margin-top:4px}
+.conversation-arrow{font-size:23px;color:#d28ba8}
+.message-dialog{width:min(600px,calc(100% - 20px));height:min(720px,88vh);max-height:88vh}
+.message-modal{height:100%;display:flex;flex-direction:column;padding:20px}
+.message-header{display:flex;gap:12px;align-items:flex-start;padding-bottom:15px;border-bottom:1px solid #f2e6ec}
+.message-header .close-button{margin-left:auto;flex-shrink:0}
+.message-header h2{font-size:21px;margin:5px 0}
+.message-header p{font-size:10px;margin:0;color:#9b8b96}
+.message-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:16px 3px}
+.message-bubble{max-width:82%;padding:10px 12px;border-radius:14px;background:#fff4f8;align-self:flex-start;overflow-wrap:anywhere}
+.message-bubble.mine{align-self:flex-end;background:#d95f91;color:#fff;border-bottom-right-radius:4px}
+.message-bubble.theirs{border-bottom-left-radius:4px}
+.message-bubble small,.message-bubble time{display:block;font-size:9px;opacity:.72}
+.message-bubble p{font-size:12px;line-height:1.55;margin:5px 0;color:inherit;white-space:pre-wrap}
+.message-compose{display:flex;align-items:flex-end;gap:8px;padding-top:12px;border-top:1px solid #f2e6ec}
+.message-compose textarea{flex:1;min-width:0;resize:none;border:1px solid #eee1e8;border-radius:12px;padding:11px;font-size:12px}
+.message-compose .button{height:43px}
+.message-modal>.form-error{margin:3px 0 0}
+@media(max-width:480px){.message-dialog{width:calc(100% - 12px);height:86vh}.message-modal{padding:14px}.message-compose{gap:6px}.message-compose .button{padding:10px 12px}}
