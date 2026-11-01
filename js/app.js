@@ -104,7 +104,7 @@ function render() {
 
 
 const accountDialog = $("#accountDialog");
-let accountData = { posts: [], claims: [], received: [] };
+let accountData = { posts: [], claims: [], received: [], reports: [] };
 let accountTab = "posts";
 let conversations = [];
 let activeConversation = null;
@@ -122,6 +122,7 @@ function renderAccountTab() {
   if (!target) return;
   if (accountTab === "messages") { renderConversations(); loadConversations(); return; }
   if (accountTab === "history") { renderRecentlyViewed(); return; }
+  if (accountTab === "reports") { const rows = accountData.reports || []; target.innerHTML = rows.length ? rows.map(row => accountRow(row.items?.title || "Campus item", row.reason, row.status, row.created_at)).join("") : '<div class="account-empty"><p>You have not submitted any reports.</p></div>'; return; }
   if (accountTab === "reputation") { renderReputation(); return; }
   const rows = accountData[accountTab] || [];
   if (!rows.length) {
@@ -552,18 +553,19 @@ async function markPostReturned(itemId, button) {
 async function loadAccountData() {
   if (!supabase || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
-  const [posts, claims, received] = await Promise.all([
+  const [posts, claims, received, reports] = await Promise.all([
     supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type,owner_id)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false })
+    supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false }),
+    supabase.from("reports").select("id,reason,status,created_at,items!reports_item_id_fkey(title)").eq("reporter_id", currentUser.id).order("created_at", { ascending: false })
   ]);
-  const failed = [posts, claims, received].find((result) => result.error);
+  const failed = [posts, claims, received, reports].find((result) => result.error);
   if (failed) {
     console.error("FindIt account activity:", failed.error);
     $("#accountContent").innerHTML = '<p class="form-error">Could not load your activity. ' + esc(failed.error.message) + '</p>';
     return;
   }
-  accountData = { posts: posts.data || [], claims: claims.data || [], received: received.data || [] };
+  accountData = { posts: posts.data || [], claims: claims.data || [], received: received.data || [], reports: reports.data || [] };
   renderAccountTab();
 }
 async function openAccount() {
