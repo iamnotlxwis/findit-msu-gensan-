@@ -412,21 +412,55 @@ async function refreshSession() {
 }
 
 async function signIn() {
-  if (!supabase) {
-    errorAt("#authError", "FindIt is still connecting. Please wait a moment and try again.");
-    return;
-  }
+  if (!supabase) return errorAt("#authError", "FindIt is still connecting. Please wait a moment and try again.");
   errorAt("#authError");
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: "https://findit-msu-gensan.vercel.app/",
-      queryParams: { hd: "msugensan.edu.ph" }
+      redirectTo: "https://findit-msu-gensan.vercel.app/"
     }
   });
   if (error) errorAt("#authError", error.message);
 }
-
+async function sendEmailOtp(event) {
+  event.preventDefault();
+  errorAt("#authError");
+  const email = $("#otpEmail").value.trim().toLowerCase();
+  if (!email) return errorAt("#authError", "Enter your email address.");
+  const button = $("#sendOtp");
+  button.disabled = true;
+  button.textContent = "Sending code...";
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false }
+  });
+  button.disabled = false;
+  button.textContent = "Send email code";
+  if (error) return errorAt("#authError", error.message);
+  $("#otpVerifyForm").hidden = false;
+  $("#otpCode").focus();
+  notify("Verification code sent. Check your email inbox and spam folder.");
+}
+async function verifyEmailOtp(event) {
+  event.preventDefault();
+  errorAt("#authError");
+  const email = $("#otpEmail").value.trim().toLowerCase();
+  const token = $("#otpCode").value.trim();
+  if (!/^[0-9]{6}$/.test(token)) return errorAt("#authError", "Enter the 6-digit code.");
+  const button = $("#verifyOtp");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  button.disabled = false;
+  button.textContent = "Verify and sign in";
+  if (error) return errorAt("#authError", error.message);
+  auth.close();
+  $("#otpEmailForm").reset();
+  $("#otpVerifyForm").reset();
+  $("#otpVerifyForm").hidden = true;
+  notify("You're signed in.");
+  await refreshSession();
+}
 async function signOut() {
   if (!supabase) return notify("FindIt is not connected yet. Refresh and try again.");
   const { error } = await supabase.auth.signOut();
@@ -542,6 +576,8 @@ $("#closeMessages")?.addEventListener("click", closeMessageDialog);
 $("#messageDialog")?.addEventListener("close", async () => { if (messageChannel && supabase) { await supabase.removeChannel(messageChannel); messageChannel = null; } activeConversation = null; });
 $("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
 $("#googleLogin")?.addEventListener("click", signIn);
+$("#otpEmailForm")?.addEventListener("submit", sendEmailOtp);
+$("#otpVerifyForm")?.addEventListener("submit", verifyEmailOtp);
 $("#logout")?.addEventListener("click", signOut);
 ["#post", "#post2", "#report"].forEach((selector) => {
   $(selector)?.addEventListener("click", async () => {
