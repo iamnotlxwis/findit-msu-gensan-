@@ -432,7 +432,7 @@ async function sendEmailOtp(event) {
   button.textContent = "Sending code...";
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: false }
+    options: { shouldCreateUser: true }
   });
   button.disabled = false;
   button.textContent = "Send email code";
