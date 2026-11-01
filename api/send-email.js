@@ -59,11 +59,14 @@ module.exports = async function handler(req, res) {
     const email = user.email;
     const token = String(emailData.token || "").trim();
 
-    if (!email || !/^[0-9]{6}$/.test(token)) {
-      console.error("Invalid Supabase email hook payload shape:", {
+    if (!email || !/^\d{6}$/.test(token)) {
+      console.error("Invalid Supabase email hook payload:", {
         hasUser: Boolean(payload.user),
         hasEmail: Boolean(email),
-        emailDataKeys: Object.keys(emailData)
+        emailDataKeys: Object.keys(emailData),
+        tokenType: typeof emailData.token,
+        tokenLength: token.length,
+        tokenIsNumeric: /^\d+$/.test(token)
       });
       return res.status(400).json({
         error: { http_code: 400, message: "Invalid email or OTP payload." }
