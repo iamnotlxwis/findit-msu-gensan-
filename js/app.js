@@ -1,5 +1,6 @@
 const SUPABASE_URL="https://bmtearyxlnrzgcuvcepw.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_Lck0L35G-vtAqFRQfMUH2A_fhQ2neY4";
+if(!window.supabase||typeof window.supabase.createClient!=="function"){document.addEventListener("DOMContentLoaded",()=>{const t=document.querySelector("#toast");if(t){t.textContent="FindIt could not load its connection library. Please refresh or try another network.";t.classList.add("show");}});throw new Error("Supabase JavaScript library did not load.");}
 const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 let currentUser=null,currentProfile=null,selectedItem=null,filter="All",allItems=[];
 const $=s=>document.querySelector(s),grid=$("#items"),search=$("#search"),auth=$("#auth"),submission=$("#submission"),claimDialog=$("#claimDialog"),toast=$("#toast");
