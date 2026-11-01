@@ -1,6 +1,24 @@
 const SUPABASE_URL="https://bmtearyxlnrzgcuvcepw.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_Lck0L35G-vtAqFRQfMUH2A_fhQ2neY4";
-if(!window.supabase||typeof window.supabase.createClient!=="function"){document.addEventListener("DOMContentLoaded",()=>{const t=document.querySelector("#toast");if(t){t.textContent="FindIt could not load its connection library. Please refresh or try another network.";t.classList.add("show");}});throw new Error("Supabase JavaScript library did not load.");}
+if(!window.supabase||typeof window.supabase.createClient!=="function"){
+ document.addEventListener("DOMContentLoaded",()=>{
+  const toast=document.querySelector("#toast");
+  const showError=message=>{if(toast){toast.textContent=message;toast.classList.add("show");}};
+  const auth=document.querySelector("#auth");
+  const submission=document.querySelector("#submission");
+  const openLogin=()=>auth?.showModal();
+  document.querySelector("#login")?.addEventListener("click",openLogin);
+  document.querySelector("#googleLogin")?.addEventListener("click",()=>showError("Sign-in is temporarily unavailable because FindIt's connection library did not load. Please refresh or try another network."));
+  ["#post","#post2","#report"].forEach(selector=>document.querySelector(selector)?.addEventListener("click",openLogin));
+  document.querySelectorAll(".filter").forEach(button=>button.addEventListener("click",()=>{
+   document.querySelector(".filter.active")?.classList.remove("active");
+   button.classList.add("active");
+   showError("Listings are temporarily unavailable because the connection library did not load.");
+  }));
+  showError("FindIt could not load its connection library. Some features are unavailable. Please refresh or try another network.");
+ });
+ throw new Error("Supabase JavaScript library did not load.");
+}
 const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 let currentUser=null,currentProfile=null,selectedItem=null,filter="All",allItems=[];
 const $=s=>document.querySelector(s),grid=$("#items"),search=$("#search"),auth=$("#auth"),submission=$("#submission"),claimDialog=$("#claimDialog"),toast=$("#toast");
