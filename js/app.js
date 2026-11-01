@@ -129,7 +129,7 @@ async function signIn() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: location.origin,
+      redirectTo: "https://findit-msu-gensan.vercel.app/",
       queryParams: { hd: "msugensan.edu.ph" }
     }
   });
