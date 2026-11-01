@@ -369,6 +369,7 @@ async function loadAdminDashboard() {
       .update({ moderation_status: button.dataset.nextModeration })
       .eq("id", button.dataset.adminItem);
     if (error) { button.disabled = false; return notify("Moderation failed: " + error.message); }
+    await logAdminAction("Changed listing moderation","item",button.dataset.adminItem,{status:button.dataset.nextModeration});
     notify("Listing moderation updated.");
     await loadAdminDashboard();
     await loadItems();
@@ -379,9 +380,91 @@ async function loadAdminDashboard() {
       .update({ status: button.dataset.nextReport })
       .eq("id", button.dataset.adminReport);
     if (error) { button.disabled = false; return notify("Report update failed: " + error.message); }
+    await logAdminAction("Updated report","report",button.dataset.adminReport,{status:button.dataset.nextReport});
     notify("Report status updated.");
     await loadAdminDashboard();
   }));
+}
+
+
+function rememberViewed(itemId) {
+  recentlyViewed = [itemId, ...recentlyViewed.filter(id => id !== itemId)].slice(0,20);
+  localStorage.setItem("finditRecentlyViewed", JSON.stringify(recentlyViewed));
+}
+function renderRecentlyViewed() {
+  const target = $("#accountContent");
+  const rows = recentlyViewed.map(id => allItems.find(item => item.id === id)).filter(Boolean);
+  target.innerHTML = rows.length ? rows.map(item => accountRow(item.title, (item.item_type || "").toUpperCase() + " · " + (item.building || item.campus_location), item.status, item.created_at)).join("") : '<div class="account-empty"><p>No recently viewed listings yet.</p></div>';
+}
+async function renderReputation() {
+  const target = $("#accountContent");
+  const { data, error } = await supabase.from("profiles").select("reputation_points,successful_returns").eq("id", currentUser.id).single();
+  if (error) { target.innerHTML = '<p class="form-error">Could not load reputation.</p>'; return; }
+  target.innerHTML = '<section class="reputation-card"><div class="reputation-score">' + Number(data.reputation_points || 0) + '</div><h3>Community points</h3><p>' + Number(data.successful_returns || 0) + ' successful returns</p><small>Earn 10 points when both sides confirm a handover.</small></section>';
+}
+async function confirmHandover(claimId, side, button) {
+  if (!currentUser || !["owner","claimant"].includes(side)) return;
+  button.disabled = true;
+  const claim = [...accountData.received, ...accountData.claims].find(row => row.id === claimId);
+  if (!claim) { button.disabled = false; return; }
+  const itemId = claim.item_id;
+  const ownerId = side === "owner" ? currentUser.id : claim.items?.owner_id;
+  const claimantId = side === "claimant" ? currentUser.id : claim.claimant_id;
+  let { data, error } = await supabase.from("handover_confirmations").select("*").eq("claim_id", claimId).maybeSingle();
+  if (!data && !error) {
+    const created = await supabase.from("handover_confirmations").insert({ item_id:itemId, claim_id:claimId, owner_id:ownerId, claimant_id:claimantId }).select("*").single();
+    data = created.data; error = created.error;
+  }
+  if (error || !data) { button.disabled=false; return notify("Could not prepare handover: " + (error?.message || "Unknown error")); }
+  const column = side === "owner" ? "owner_confirmed_at" : "claimant_confirmed_at";
+  const update = await supabase.from("handover_confirmations").update({ [column]: new Date().toISOString() }).eq("id", data.id);
+  if (update.error) { button.disabled=false; return notify("Confirmation failed: " + update.error.message); }
+  notify("Your handover confirmation was recorded. The item closes after both sides confirm.");
+  await loadAccountData(); await loadItems();
+}
+async function logAdminAction(action, targetType, targetId, details={}) {
+  if (!currentUser) return;
+  const { error } = await supabase.from("admin_activity_logs").insert({admin_id:currentUser.id,action,target_type:targetType,target_id:targetId,details});
+  if (error) console.warn("Admin activity log:", error.message);
+}
+function downloadCsv(filename, rows) {
+  const keys = [...new Set(rows.flatMap(row => Object.keys(row)))];
+  const quote = value => '"' + String(value ?? "").replace(/"/g,'""') + '"';
+  const csv = [keys.map(quote).join(","), ...rows.map(row => keys.map(key => quote(typeof row[key] === "object" ? JSON.stringify(row[key]) : row[key])).join(","))].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8;"}));
+  const link = document.createElement("a"); link.href=url; link.download=filename; link.click(); URL.revokeObjectURL(url);
+}
+async function loadAdminExtras(target) {
+  const [profiles, logs, settings] = await Promise.all([
+    supabase.from("profiles").select("id,display_name,is_suspended,reputation_points,successful_returns,created_at").order("created_at",{ascending:false}).limit(100),
+    supabase.from("admin_activity_logs").select("id,admin_id,action,target_type,target_id,details,created_at").order("created_at",{ascending:false}).limit(100),
+    supabase.from("findit_settings").select("listing_expiry_days").eq("id",true).single()
+  ]);
+  const profileRows = profiles.data || [], logRows = logs.data || [];
+  target.insertAdjacentHTML("beforeend",
+    '<h3>Platform settings</h3><div class="admin-setting"><label for="expiryDays">Listing expiry (days)</label><input id="expiryDays" type="number" min="1" max="365" value="' + Number(settings.data?.listing_expiry_days || 30) + '"><button class="claim-review accept" id="saveExpiry">Save</button></div>' +
+    '<h3>Student management</h3>' + profileRows.map(row => '<article class="admin-row"><div class="admin-row-main"><strong>' + esc(row.display_name || "Student") + '</strong><small>' + Number(row.reputation_points||0) + ' points · ' + Number(row.successful_returns||0) + ' returns</small><span class="activity-status">' + (row.is_suspended ? "Suspended" : "Active") + '</span></div><button class="claim-review ' + (row.is_suspended ? "accept" : "reject") + '" data-suspend="' + esc(row.id) + '" data-state="' + (!row.is_suspended) + '">' + (row.is_suspended ? "Restore" : "Suspend") + '</button></article>').join("") +
+    '<div class="admin-export"><button class="button button-secondary" id="exportReports">Export reports CSV</button><button class="button button-secondary" id="exportLogs">Export activity CSV</button></div>' +
+    '<h3>Admin activity history</h3>' + (logRows.length ? logRows.map(row => '<article class="admin-row"><div class="admin-row-main"><strong>' + esc(row.action) + '</strong><small>' + esc(row.target_type || "system") + ' · ' + esc(new Date(row.created_at).toLocaleString()) + '</small></div></article>').join("") : '<p class="account-empty">No admin actions recorded yet.</p>')
+  );
+  $("#saveExpiry")?.addEventListener("click", async () => {
+    const days = Number($("#expiryDays").value);
+    if (!Number.isInteger(days) || days < 1 || days > 365) return notify("Choose between 1 and 365 days.");
+    const {error} = await supabase.from("findit_settings").update({listing_expiry_days:days,updated_at:new Date().toISOString()}).eq("id",true);
+    if (error) return notify("Could not save expiry setting: " + error.message);
+    await logAdminAction("Updated listing expiry","settings",null,{days}); notify("Listing expiry updated.");
+  });
+  target.querySelectorAll("[data-suspend]").forEach(button => button.addEventListener("click", async () => {
+    const {error} = await supabase.from("profiles").update({is_suspended:button.dataset.state === "true"}).eq("id",button.dataset.suspend);
+    if (error) return notify("Could not update student: " + error.message);
+    await logAdminAction(button.dataset.state === "true" ? "Suspended student" : "Restored student","profile",button.dataset.suspend);
+    await loadAdminDashboard();
+  }));
+  $("#exportReports")?.addEventListener("click", async () => {
+    const {data,error}=await supabase.from("reports").select("id,item_id,reporter_id,reason,status,created_at");
+    if(error) return notify("Export failed: "+error.message); downloadCsv("findit-reports.csv",data||[]);
+  });
+  $("#exportLogs")?.addEventListener("click", async () => downloadCsv("findit-admin-activity.csv",logRows));
 }
 
 async function loadNotifications() {
@@ -593,7 +676,7 @@ async function loadItems() {
   const { data, error } = await supabase.from("items")
     .select("id,item_type,title,description,category,campus_location,building,event_date,status,created_at,owner_id,image_path,expires_at,verification_question,item_media(storage_path)")
     .eq("moderation_status", "published")
-    .in("status", ["active", "claimed"])
+    .in("status", ["active", "claimed"]).or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(60);
 
@@ -684,6 +767,8 @@ async function createItem(event) {
   button.disabled = true;
   button.textContent = "Publishing...";
   try {
+    const possibleDuplicate = allItems.find(row => row.item_type === $("#itemType").value && row.title.toLowerCase() === $("#itemTitle").value.trim().toLowerCase() && row.category === $("#itemCategory").value && (row.building || row.campus_location).toLowerCase() === ($("#itemBuilding").value.trim() || $("#itemLocation").value.trim()).toLowerCase());
+    if (possibleDuplicate && !window.confirm("A similar listing already exists. Post anyway?")) return;
     const item = {
       owner_id: currentUser.id,
       item_type: $("#itemType").value,
@@ -768,6 +853,9 @@ $("#closeMessages")?.addEventListener("click", closeMessageDialog);
 $("#messageDialog")?.addEventListener("close", async () => { if (messageChannel && supabase) { await supabase.removeChannel(messageChannel); messageChannel = null; } activeConversation = null; });
 $("#accountDialog")?.querySelector("[data-close-account]")?.addEventListener("click", () => accountDialog.close());
 $("#googleLogin")?.addEventListener("click", signIn);
+$("#themeToggle")?.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+$("#preferencesButton")?.addEventListener("click", async () => { if (!await needLogin()) return; $("#preferencesDialog").showModal(); await loadPreferences(); });
+$("#preferencesForm")?.addEventListener("submit", savePreferences);
 $("#logout")?.addEventListener("click", signOut);
 ["#post", "#post2", "#report"].forEach((selector) => {
   $(selector)?.addEventListener("click", async () => {
@@ -824,6 +912,29 @@ document.querySelectorAll(".filter").forEach((button) => {
     render();
   });
 });
+
+async function loadPreferences() {
+  if (!currentUser || !supabase) return;
+  const {data} = await supabase.from("user_preferences").select("theme,email_notifications").eq("user_id",currentUser.id).maybeSingle();
+  const theme = data?.theme || localStorage.getItem("finditTheme") || "light";
+  $("#themePreference").value = theme;
+  $("#emailNotifications").checked = data?.email_notifications ?? true;
+  setTheme(theme);
+}
+function setTheme(theme) {
+  const resolved = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+  document.documentElement.dataset.theme = resolved;
+  localStorage.setItem("finditTheme", theme);
+  if ($("#themeToggle")) $("#themeToggle").textContent = resolved === "dark" ? "☀" : "☾";
+}
+async function savePreferences(event) {
+  event.preventDefault();
+  const theme = $("#themePreference").value;
+  const payload = {user_id:currentUser.id,theme,email_notifications:$("#emailNotifications").checked,updated_at:new Date().toISOString()};
+  const {error} = await supabase.from("user_preferences").upsert(payload,{onConflict:"user_id"});
+  if (error) { $("#preferencesError").textContent = error.message; return; }
+  setTheme(theme); $("#preferencesDialog").close(); notify("Preferences saved.");
+}
 
 async function startFindIt() {
   try {
