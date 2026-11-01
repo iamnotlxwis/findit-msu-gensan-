@@ -998,3 +998,105 @@ $("#dateFilter")?.addEventListener("change", render);
 $("#buildingFilter")?.addEventListener("input", render);
 $("#categoryFilter")?.addEventListener("change", (event) => {
   categoryFilter = event.target.value;
+  render();
+});
+$("#sortOrder")?.addEventListener("change", (event) => {
+  sortOrder = event.target.value;
+  render();
+});
+document.querySelectorAll(".filter").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelector(".filter.active")?.classList.remove("active");
+    button.classList.add("active");
+    filter = button.dataset.filter;
+    render();
+  });
+});
+
+async function loadPreferences() {
+  if (!currentUser || !db) return;
+  const {data, error} = await db.from("user_preferences").select("theme,email_notifications").eq("user_id",currentUser.id).maybeSingle();
+  if (error) console.warn("FindIt preferences:", error.message);
+  const theme = data?.theme || readStorage("finditTheme", "light");
+  $("#themePreference").value = theme;
+  $("#emailNotifications").checked = data?.email_notifications ?? true;
+  setTheme(theme);
+}
+function setTheme(theme) {
+  const resolved = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+  document.documentElement.dataset.theme = resolved;
+  writeStorage("finditTheme", theme);
+  if ($("#themeToggle")) $("#themeToggle").textContent = resolved === "dark" ? "☀" : "☾";
+}
+async function savePreferences(event) {
+  event.preventDefault();
+  const theme = $("#themePreference").value;
+  if (!currentUser || !db) return;
+  const payload = {user_id:currentUser.id,theme,email_notifications:$("#emailNotifications").checked,updated_at:new Date().toISOString()};
+  const {error} = await db.from("user_preferences").upsert(payload,{onConflict:"user_id"});
+  if (error) { $("#preferencesError").textContent = error.message; return; }
+  setTheme(theme); $("#preferencesDialog").close(); notify("Preferences saved.");
+}
+
+async function startFindIt() {
+  try {
+    const createClient = window.supabase?.createClient;
+    if (typeof createClient !== "function") throw new Error("Supabase library did not load. Check your connection and reload FindIt.");
+    db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+    const connectionCheck = await db.from("items").select("id", { head: true, count: "exact" }).limit(1);
+    if (connectionCheck.error) throw connectionCheck.error;
+    // Keep this callback synchronous. Supabase auth callbacks must not await
+    // other Supabase requests because they can block the auth lock/session flow.
+    db.auth.onAuthStateChange((_event, session) => {
+      currentUser = session?.user || null;
+      currentProfile = null;
+      currentRole = null;
+      header();
+      render();
+
+      Promise.resolve().then(async () => {
+        if (notificationChannel) {
+          await db.removeChannel(notificationChannel);
+          notificationChannel = null;
+        }
+        if (!currentUser) return;
+
+        const userId = currentUser.id;
+        const [profileResult, roleResult] = await Promise.all([
+          db.from("profiles")
+            .select("display_name,is_suspended,reputation_points,successful_returns")
+            .eq("id", userId).maybeSingle(),
+          db.from("user_roles").select("role")
+            .eq("user_id", userId).maybeSingle()
+        ]);
+
+        // Ignore stale results if the user signed out or switched accounts.
+        if (!currentUser || currentUser.id !== userId) return;
+        if (!profileResult.error) currentProfile = profileResult.data;
+        if (!roleResult.error) currentRole = roleResult.data?.role || null;
+        subscribeNotifications();
+        if (auth?.open) auth.close();
+        header();
+        render();
+      }).catch(error => {
+        console.error("FindIt auth state update failed:", error);
+        errorAt("#authError", "Signed in, but your profile could not be loaded: " + error.message);
+      });
+    });
+
+    setTheme(readStorage("finditTheme", "light"));
+    await refreshSession();
+    await loadPreferences();
+    await loadItems();
+    clearNotice();
+  } catch (error) {
+    console.error("FindIt startup failed:", error);
+    notify("FindIt couldn't connect. Check your internet connection, then refresh. Details: " + error.message);
+  }
+}
+
+header();
+render();
+startFindIt();
