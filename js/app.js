@@ -126,7 +126,16 @@ function renderAccountTab() {
     return;
   }
   if (accountTab === "posts") {
-    target.innerHTML = rows.map((item) => accountRow(item.title, item.item_type.toUpperCase() + " · " + item.campus_location, item.status, item.created_at)).join("");
+    target.innerHTML = rows.map((item) =>
+      '<article class="received-row"><div class="received-main"><strong>' + esc(item.title) +
+      '</strong><small>' + esc(item.item_type.toUpperCase() + " · " + item.campus_location) +
+      '</small><span class="activity-status">' + esc(statusLabel(item.status)) +
+      '</span></div><button type="button" class="claim-review reject" data-delete-post="' +
+      esc(item.id) + '">Remove post</button></article>'
+    ).join("");
+    target.querySelectorAll("[data-delete-post]").forEach((button) => {
+      button.addEventListener("click", () => deleteOwnPost(button.dataset.deletePost, button));
+    });
   } else if (accountTab === "claims") {
     target.innerHTML = rows.map((claim) => accountRow(claim.items?.title || "Campus item", claim.items?.item_type?.toUpperCase() + " · " + claim.message, claim.status, claim.created_at)).join("");
   } else if (accountTab === "saved") {
@@ -270,6 +279,39 @@ async function reviewClaim(claimId, nextStatus, button) {
   } else notify("Claim rejected.");
   await loadAccountData();
 }
+async function deleteOwnPost(itemId, button) {
+  if (!currentUser || !itemId) return;
+  const item = accountData.posts.find((row) => row.id === itemId);
+  if (!item) return;
+  const confirmed = window.confirm('Remove "' + item.title + '"? This permanently deletes the post and its related claims, reports and saved entries.');
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "Removing...";
+  const { error } = await supabase.from("items")
+    .delete()
+    .eq("id", itemId)
+    .eq("owner_id", currentUser.id);
+
+  if (error) {
+    button.disabled = false;
+    button.textContent = "Remove post";
+    notify("Could not remove post: " + error.message);
+    return;
+  }
+
+  allItems = allItems.filter((row) => row.id !== itemId);
+  accountData.posts = accountData.posts.filter((row) => row.id !== itemId);
+  if (item.image_path) {
+    const { error: storageError } = await supabase.storage
+      .from("item-images").remove([item.image_path]);
+    if (storageError) console.warn("FindIt image cleanup:", storageError.message);
+  }
+  render();
+  renderAccountTab();
+  notify("Your post has been removed.");
+}
+
 async function loadAccountData() {
   if (!supabase || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
