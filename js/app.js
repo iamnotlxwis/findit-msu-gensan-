@@ -6,6 +6,8 @@ let currentUser = null;
 let currentProfile = null;
 let selectedItem = null;
 let filter = "All";
+let categoryFilter = "All";
+let sortOrder = "newest";
 let allItems = [];
 
 const $ = (selector) => document.querySelector(selector);
@@ -57,9 +59,12 @@ function render() {
   const query = search.value.trim().toLowerCase();
   const rows = allItems.filter((item) =>
     (filter === "All" || item.item_type === filter) &&
+    (categoryFilter === "All" || item.category === categoryFilter) &&
     [item.title, item.description, item.category, item.campus_location]
       .join(" ").toLowerCase().includes(query)
-  );
+  ).sort((a, b) => sortOrder === "newest"
+    ? new Date(b.created_at) - new Date(a.created_at)
+    : new Date(a.created_at) - new Date(b.created_at));
   if ($("#count")) $("#count").textContent = rows.length + " ITEMS";
   if ($("#empty")) $("#empty").hidden = rows.length > 0;
 
@@ -103,6 +108,17 @@ async function loadItems() {
   }
   allItems = data || [];
   render();
+
+  const [total, lost, found, returned] = await Promise.all([
+    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").in("status", ["active", "claimed"]),
+    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("item_type", "lost").in("status", ["active", "claimed"]),
+    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("item_type", "found").in("status", ["active", "claimed"]),
+    supabase.from("items").select("id", { count: "exact", head: true }).eq("moderation_status", "published").eq("status", "returned")
+  ]);
+  if ($("#statTotal")) $("#statTotal").textContent = total.count ?? "—";
+  if ($("#statLost")) $("#statLost").textContent = lost.count ?? "—";
+  if ($("#statFound")) $("#statFound").textContent = found.count ?? "—";
+  if ($("#statReturned")) $("#statReturned").textContent = returned.count ?? "—";
 }
 
 async function refreshSession() {
@@ -275,6 +291,14 @@ uploadZone?.addEventListener("drop", (event) => {
 });
 
 search?.addEventListener("input", render);
+$("#categoryFilter")?.addEventListener("change", (event) => {
+  categoryFilter = event.target.value;
+  render();
+});
+$("#sortOrder")?.addEventListener("change", (event) => {
+  sortOrder = event.target.value;
+  render();
+});
 document.querySelectorAll(".filter").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelector(".filter.active")?.classList.remove("active");
