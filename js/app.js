@@ -324,7 +324,12 @@ $("#logout")?.addEventListener("click", signOut);
 });
 $("#postForm")?.addEventListener("submit", createItem);
 $("#claimForm")?.addEventListener("submit", submitClaim);
-$("#closeDetails")?.addEventListener("click", () => $("#itemDetails").close());
+document.querySelectorAll(".close-button").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    button.closest("dialog")?.close();
+  });
+});
 $("#itemPhoto")?.addEventListener("change", () => {
   const file = $("#itemPhoto").files[0];
   $("#fileName").textContent = file ? file.name : "No file selected";
