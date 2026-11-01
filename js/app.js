@@ -77,7 +77,24 @@ function render() {
     ? new Date(b.created_at) - new Date(a.created_at)
     : new Date(a.created_at) - new Date(b.created_at));
   if ($("#count")) $("#count").textContent = rows.length + " ITEMS";
-  if ($("#empty")) $("#empty").hidden = rows.length > 0;
+  if ($("#empty")) $("#empty").hidden = true;
+
+  if (!rows.length) {
+    grid.innerHTML = '<div class="empty-board"><span class="empty-board-mark">⌕</span><h3>No listings to show</h3><p>There are no matching lost or found posts yet. Try clearing your filters or check back later.</p><button type="button" class="text-button" id="clearListingFilters">Clear filters</button></div>';
+    $("#clearListingFilters")?.addEventListener("click", () => {
+      search.value = "";
+      filter = "All";
+      categoryFilter = "All";
+      sortOrder = "newest";
+      if ($("#categoryFilter")) $("#categoryFilter").value = "All";
+      if ($("#sortOrder")) $("#sortOrder").value = "newest";
+      if ($("#dateFilter")) $("#dateFilter").value = "";
+      if ($("#buildingFilter")) $("#buildingFilter").value = "";
+      document.querySelectorAll(".filter").forEach(button => button.classList.toggle("active", button.dataset.filter === "All"));
+      render();
+    });
+    return;
+  }
 
   grid.innerHTML = rows.map((item) => {
     const firstPhoto = item.media?.[0]?.storage_path || item.image_path;
@@ -688,10 +705,10 @@ async function loadItems() {
     .limit(60);
 
   if (error) {
-    grid.innerHTML = "";
+    grid.innerHTML = '<div class="empty-board empty-board-error"><span class="empty-board-mark">!</span><h3>Listings couldn't load</h3><p>' + esc(error.message) + '</p><button type="button" class="text-button" id="retryListings">Try again</button></div>';
     if ($("#count")) $("#count").textContent = "UNAVAILABLE";
     console.error("FindIt listings:", error);
-    notify("Couldn't load listings: " + error.message);
+    $("#retryListings")?.addEventListener("click", loadItems);
     return;
   }
   allItems = data || [];
@@ -731,15 +748,23 @@ async function refreshSession() {
 }
 
 async function signIn() {
+  const button = $("#googleLogin");
   if (!supabase) return errorAt("#authError", "FindIt is still connecting. Please wait a moment and try again.");
   errorAt("#authError");
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: "https://findit-msu-gensan.vercel.app/"
-    }
-  });
-  if (error) errorAt("#authError", error.message);
+  if (button) { button.disabled = true; button.textContent = "Connecting to Google..."; }
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin + window.location.pathname
+      }
+    });
+    if (error) errorAt("#authError", "Google sign-in failed: " + error.message);
+  } catch (error) {
+    errorAt("#authError", "Couldn't start Google sign-in. Please try again. " + (error.message || ""));
+  } finally {
+    if (button) { button.disabled = false; button.textContent = "Continue with Google"; }
+  }
 }
 
 async function uploadPhoto(file, itemId) {
@@ -876,10 +901,16 @@ $("#logout")?.addEventListener("click", signOut);
 $("#postForm")?.addEventListener("submit", createItem);
 $("#claimForm")?.addEventListener("submit", submitClaim);
 $("#reportForm")?.addEventListener("submit", submitReport);
-document.querySelectorAll(".close-button").forEach((button) => {
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    button.closest("dialog")?.close();
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".close-button");
+  if (!button) return;
+  event.preventDefault();
+  const dialog = button.closest("dialog");
+  if (dialog?.open) dialog.close();
+});
+document.querySelectorAll("dialog").forEach(dialog => {
+  dialog.addEventListener("click", event => {
+    if (event.target === dialog) dialog.close();
   });
 });
 $("#itemPhoto")?.addEventListener("change", () => {
@@ -964,10 +995,24 @@ async function startFindIt() {
     if (typeof createClient !== "function") throw new Error("Supabase client could not be loaded.");
 
     supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-    supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.onAuthStateChange(async (_event, session) => {
       currentUser = session?.user || null;
       currentProfile = null;
-      if (currentUser) subscribeNotifications();
+      currentRole = null;
+      if (notificationChannel) {
+        await supabase.removeChannel(notificationChannel);
+        notificationChannel = null;
+      }
+      if (currentUser) {
+        const [profileResult, roleResult] = await Promise.all([
+          supabase.from("profiles").select("display_name,is_suspended,reputation_points,successful_returns").eq("id", currentUser.id).maybeSingle(),
+          supabase.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle()
+        ]);
+        if (!profileResult.error) currentProfile = profileResult.data;
+        if (!roleResult.error) currentRole = roleResult.data?.role || null;
+        subscribeNotifications();
+        if (auth?.open) auth.close();
+      }
       header();
       render();
     });
