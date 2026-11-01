@@ -983,18 +983,13 @@ async function savePreferences(event) {
 
 async function startFindIt() {
   try {
-    let createClient = window.supabase?.createClient;
-    if (typeof createClient !== "function") {
-      try {
-        ({ createClient } = await import("https://esm.sh/@supabase/supabase-js@2"));
-      } catch (firstError) {
-        console.warn("Primary Supabase CDN failed:", firstError);
-        ({ createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"));
-      }
-    }
-    if (typeof createClient !== "function") throw new Error("Supabase client could not be loaded.");
-
-    supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    const createClient = window.supabase?.createClient;
+    if (typeof createClient !== "function") throw new Error("Supabase library did not load. Check your connection and reload FindIt.");
+    supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+    const connectionCheck = await supabase.from("items").select("id", { head: true, count: "exact" }).limit(1);
+    if (connectionCheck.error) throw connectionCheck.error;
     supabase.auth.onAuthStateChange(async (_event, session) => {
       currentUser = session?.user || null;
       currentProfile = null;
