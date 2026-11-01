@@ -10,7 +10,7 @@ let filter = "All";
 let categoryFilter = "All";
 let sortOrder = "newest";
 let allItems = [];
-let savedItemIds = new Set();
+let recentlyViewed = JSON.parse(localStorage.getItem("finditRecentlyViewed") || "[]");
 let activeDetailItem = null;
 let activeReportItem = null;
 
@@ -57,7 +57,7 @@ function openLogin() {
 async function needLogin() {
   if (currentUser) return true;
   openLogin();
-  errorAt("#authError", "Sign in with Google or your email address to continue.");
+  errorAt("#authError", "Sign in with your Google account to continue.");
   return false;
 }
 
@@ -67,7 +67,9 @@ function render() {
   const rows = allItems.filter((item) =>
     (filter === "All" || item.item_type === filter) &&
     (categoryFilter === "All" || item.category === categoryFilter) &&
-    [item.title, item.description, item.category, item.campus_location]
+    (!$("#dateFilter")?.value || item.event_date === $("#dateFilter").value) &&
+    (!$("#buildingFilter")?.value.trim() || (item.building || item.campus_location).toLowerCase().includes($("#buildingFilter").value.trim().toLowerCase())) &&
+    [item.title, item.description, item.category, item.campus_location, item.building]
       .join(" ").toLowerCase().includes(query)
   ).sort((a, b) => sortOrder === "newest"
     ? new Date(b.created_at) - new Date(a.created_at)
@@ -76,14 +78,12 @@ function render() {
   if ($("#empty")) $("#empty").hidden = rows.length > 0;
 
   grid.innerHTML = rows.map((item) => {
-    const photo = item.image_path && supabase
-      ? '<img src="' + esc(supabase.storage.from("item-images").getPublicUrl(item.image_path).data.publicUrl) + '" alt="Item photo" loading="lazy">'
+    const firstPhoto = item.media?.[0]?.storage_path || item.image_path;
+    const photo = firstPhoto && supabase
+      ? '<img src="' + esc(supabase.storage.from("item-images").getPublicUrl(firstPhoto).data.publicUrl) + '" alt="Item photo" loading="lazy">'
       : '<span class="item-symbol">⌕</span>';
     const claim = currentUser && currentUser.id !== item.owner_id && item.status === "active"
       ? '<button class="claim-button" data-claim="' + esc(item.id) + '">Submit a claim</button>'
-      : "";
-    const saved = currentUser
-      ? '<button class="save-button ' + (savedItemIds.has(item.id) ? 'is-saved' : '') + '" data-save="' + esc(item.id) + '" aria-label="Save item">' + (savedItemIds.has(item.id) ? '♥ Saved' : '♡ Save') + '</button>'
       : "";
     return '<article class="card"><button class="card-open" data-view="' + esc(item.id) + '" aria-label="View ' + esc(item.title) + '"><div class="visual"><span class="tag ' + esc(item.item_type) + '">' +
       esc(item.item_type.toUpperCase()) + '</span>' + photo +
@@ -91,7 +91,7 @@ function render() {
       esc(item.description) + '</p><div class="meta">' + esc(item.category) + ' · ' +
       esc(item.campus_location) + ' · ' +
       esc(item.event_date || new Date(item.created_at).toLocaleDateString()) +
-      '</div></div></button><div class="card-actions">' + saved + claim + '</div></article>';
+      '</div></div></button><div class="card-actions">' + claim + '</div></article>';
   }).join("");
 
   grid.querySelectorAll("[data-claim]").forEach((button) => {
@@ -100,14 +100,11 @@ function render() {
   grid.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => openItemDetails(button.dataset.view));
   });
-  grid.querySelectorAll("[data-save]").forEach((button) => {
-    button.addEventListener("click", () => toggleSavedItem(button.dataset.save));
-  });
 }
 
 
 const accountDialog = $("#accountDialog");
-let accountData = { posts: [], claims: [], received: [], saved: [] };
+let accountData = { posts: [], claims: [], received: [] };
 let accountTab = "posts";
 let conversations = [];
 let activeConversation = null;
@@ -124,9 +121,11 @@ function renderAccountTab() {
   const target = $("#accountContent");
   if (!target) return;
   if (accountTab === "messages") { renderConversations(); loadConversations(); return; }
+  if (accountTab === "history") { renderRecentlyViewed(); return; }
+  if (accountTab === "reputation") { renderReputation(); return; }
   const rows = accountData[accountTab] || [];
   if (!rows.length) {
-    const messages = { posts: "No posts yet.", claims: "No submitted claims yet.", received: "No one has claimed your listings yet.", saved: "No saved listings yet." };
+    const messages = { posts: "No posts yet.", claims: "No submitted claims yet.", received: "No one has claimed your listings yet." };
     target.innerHTML = '<div class="account-empty"><span>♡</span><p>' + messages[accountTab] + '</p></div>';
     return;
   }
@@ -145,8 +144,6 @@ function renderAccountTab() {
     });
   } else if (accountTab === "claims") {
     target.innerHTML = rows.map((claim) => accountRow(claim.items?.title || "Campus item", claim.items?.item_type?.toUpperCase() + " · " + claim.message, claim.status, claim.created_at)).join("");
-  } else if (accountTab === "saved") {
-    target.innerHTML = rows.map((saved) => accountRow(saved.items?.title || "Campus item", (saved.items?.item_type || "").toUpperCase() + " · " + (saved.items?.campus_location || ""), saved.items?.status || "saved", saved.created_at)).join("");
   } else {
     target.innerHTML = rows.map((claim) => {
       const item = claim.items || {};
@@ -469,19 +466,18 @@ async function markPostReturned(itemId, button) {
 async function loadAccountData() {
   if (!supabase || !currentUser) return;
   $("#accountContent").innerHTML = '<p class="loading-state">Loading your activity...</p>';
-  const [posts, claims, received, saved] = await Promise.all([
+  const [posts, claims, received] = await Promise.all([
     supabase.from("items").select("id,title,item_type,campus_location,status,created_at").eq("owner_id", currentUser.id).order("created_at", { ascending: false }),
     supabase.from("claims").select("id,message,status,created_at,items!claims_item_id_fkey(title,item_type)").eq("claimant_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false }),
-    supabase.from("saved_items").select("id,created_at,items!saved_items_item_id_fkey(title,item_type,campus_location,status)").order("created_at", { ascending: false })
+    supabase.from("claims").select("id,item_id,claimant_id,message,status,created_at,items!inner(title,item_type,owner_id)").eq("items.owner_id", currentUser.id).order("created_at", { ascending: false })
   ]);
-  const failed = [posts, claims, received, saved].find((result) => result.error);
+  const failed = [posts, claims, received].find((result) => result.error);
   if (failed) {
     console.error("FindIt account activity:", failed.error);
     $("#accountContent").innerHTML = '<p class="form-error">Could not load your activity. ' + esc(failed.error.message) + '</p>';
     return;
   }
-  accountData = { posts: posts.data || [], claims: claims.data || [], received: received.data || [], saved: saved.data || [] };
+  accountData = { posts: posts.data || [], claims: claims.data || [], received: received.data || [] };
   renderAccountTab();
 }
 async function openAccount() {
@@ -515,43 +511,21 @@ async function saveProfile(event) {
   notify("Your profile has been updated.");
 }
 
-async function loadSavedItems() {
-  savedItemIds = new Set();
-  if (!supabase || !currentUser) return;
-  const { data, error } = await supabase.from("saved_items").select("item_id");
-  if (error) {
-    console.error("FindIt saved items:", error);
-    return;
-  }
-  savedItemIds = new Set((data || []).map((row) => row.item_id));
-}
-async function toggleSavedItem(itemId) {
-  if (!currentUser) return needLogin();
-  const isSaved = savedItemIds.has(itemId);
-  const result = isSaved
-    ? await supabase.from("saved_items").delete().eq("item_id", itemId).eq("user_id", currentUser.id)
-    : await supabase.from("saved_items").insert({ item_id: itemId, user_id: currentUser.id });
-  if (result.error) return notify("Couldn't update saved items: " + result.error.message);
-  if (isSaved) savedItemIds.delete(itemId);
-  else savedItemIds.add(itemId);
-  render();
-  notify(isSaved ? "Removed from saved items." : "Item saved.");
-}
+
 function openItemDetails(itemId) {
   activeDetailItem = allItems.find((item) => item.id === itemId);
   if (!activeDetailItem) return;
   const item = activeDetailItem;
-  const imageUrl = item.image_path
-    ? supabase.storage.from("item-images").getPublicUrl(item.image_path).data.publicUrl
-    : "";
-  const image = imageUrl
-    ? '<img class="detail-image" src="' + esc(imageUrl) + '" alt="' + esc(item.title) + '">'
+  rememberViewed(item.id);
+  const photos = (item.media?.length ? item.media.map(row => row.storage_path) : (item.image_path ? [item.image_path] : []));
+  const image = photos.length
+    ? '<div class="detail-gallery">' + photos.map(path => '<img class="detail-image" src="' + esc(supabase.storage.from("item-images").getPublicUrl(path).data.publicUrl) + '" alt="' + esc(item.title) + '">').join("") + '</div>'
     : '<div class="detail-placeholder">♡</div>';
   const ownerCanClaim = currentUser && currentUser.id !== item.owner_id && item.status === "active";
   $("#detailContent").innerHTML = image +
     '<div class="eyebrow">' + esc(item.item_type.toUpperCase()) + ' ITEM</div>' +
     '<h2>' + esc(item.title) + '</h2><p>' + esc(item.description) + '</p>' +
-    '<div class="detail-meta"><span>' + esc(item.category) + '</span><span>' + esc(item.campus_location) + '</span><span>' + esc(item.event_date || new Date(item.created_at).toLocaleDateString()) + '</span></div>' +
+    '<div class="detail-meta"><span>' + esc(item.category) + '</span><span>' + esc(item.building || item.campus_location) + '</span><span>' + esc(item.event_date || new Date(item.created_at).toLocaleDateString()) + '</span></div>' +
     (ownerCanClaim ? '<button class="button button-primary full-button" id="detailClaim">Submit a claim ↗</button>' : "") +
     (currentUser && currentUser.id !== item.owner_id ? '<button class="button button-secondary full-button report-listing-button" id="detailReport">Report this listing</button>' : "");
   if (ownerCanClaim) $("#detailClaim").addEventListener("click", () => {
@@ -617,7 +591,7 @@ async function loadItems() {
   if (!supabase || !grid) return;
   grid.innerHTML = '<p class="loading">Loading campus listings...</p>';
   const { data, error } = await supabase.from("items")
-    .select("id,item_type,title,description,category,campus_location,event_date,status,created_at,owner_id,image_path")
+    .select("id,item_type,title,description,category,campus_location,building,event_date,status,created_at,owner_id,image_path,expires_at,verification_question,item_media(storage_path)")
     .eq("moderation_status", "published")
     .in("status", ["active", "claimed"])
     .order("created_at", { ascending: false })
@@ -631,6 +605,7 @@ async function loadItems() {
     return;
   }
   allItems = data || [];
+  allItems.forEach(item => item.media = item.item_media || []);
   render();
 
   const [total, lost, found, returned] = await Promise.all([
@@ -654,7 +629,6 @@ async function refreshSession() {
   if (notificationChannel) { await supabase.removeChannel(notificationChannel); notificationChannel = null; }
   if (currentUser) subscribeNotifications();
   currentRole = null;
-  await loadSavedItems();
   if (currentUser) {
     const roleResult = await supabase.from("user_roles").select("role").eq("user_id", currentUser.id).maybeSingle();
     if (!roleResult.error) currentRole = roleResult.data?.role || null;
@@ -684,7 +658,7 @@ async function uploadPhoto(file, itemId) {
     throw new Error("Choose a JPG, PNG, or WebP image under 5 MB.");
   }
   const extension = file.name.split(".").pop().toLowerCase();
-  const path = currentUser.id + "/" + itemId + "." + extension;
+  const path = currentUser.id + "/" + itemId + "/" + crypto.randomUUID() + "." + extension;
   const { error } = await supabase.storage.from("item-images")
     .upload(path, file, { contentType: file.type });
   if (error) throw error;
@@ -716,16 +690,21 @@ async function createItem(event) {
       title: $("#itemTitle").value.trim(),
       category: $("#itemCategory").value,
       campus_location: $("#itemLocation").value.trim(),
+      building: $("#itemBuilding").value.trim() || null,
+      verification_question: $("#verificationQuestion").value.trim() || null,
       event_date: $("#itemDate").value || null,
       description
     };
     const { data, error } = await supabase.from("items").insert(item).select("id").single();
     if (error) throw error;
 
-    const photoPath = await uploadPhoto($("#itemPhoto").files[0], data.id);
-    if (photoPath) {
+    const files = Array.from($("#itemPhoto").files || []);
+    if (files.length > 5) throw new Error("Choose no more than 5 photos.");
+    const uploadedPaths = [];
+    for (const file of files) uploadedPaths.push(await uploadPhoto(file, data.id));
+    if (uploadedPaths.length) {
       const { error: pathError } = await supabase.from("items")
-        .update({ image_path: photoPath }).eq("id", data.id);
+        .update({ image_path: uploadedPaths[0] }).eq("id", data.id);
       if (pathError) throw pathError;
     }
 
@@ -748,6 +727,8 @@ async function openClaim(id) {
   selectedItem = allItems.find((item) => item.id === id);
   if (!selectedItem) return;
   $("#claimForm").reset();
+  $("#claimQuestionLabel").textContent = selectedItem.verification_question || "Verification answer (describe a unique detail)";
+  $("#claimAnswer").placeholder = selectedItem.verification_question || "Describe a unique detail only the owner would know";
   errorAt("#claimError");
   claimDialog.showModal();
 }
@@ -758,9 +739,11 @@ async function submitClaim(event) {
   if (!supabase || !currentUser || !selectedItem) return;
   const button = $("#claimForm button[type=submit]");
   button.disabled = true;
+  const answer = $("#claimAnswer").value.trim();
   const { error } = await supabase.from("claims").insert({
     item_id: selectedItem.id,
     claimant_id: currentUser.id,
+    verification_answer: answer,
     message: $("#claimMessage").value.trim()
   });
   button.disabled = false;
@@ -814,15 +797,17 @@ uploadZone?.addEventListener("dragleave", () => uploadZone.classList.remove("dra
 uploadZone?.addEventListener("drop", (event) => {
   event.preventDefault();
   uploadZone.classList.remove("dragging");
-  const file = event.dataTransfer.files[0];
-  if (!file) return;
+  const files = Array.from(event.dataTransfer.files || []).slice(0,5);
+  if (!files.length) return;
   const transfer = new DataTransfer();
-  transfer.items.add(file);
+  files.forEach(file => transfer.items.add(file));
   $("#itemPhoto").files = transfer.files;
   $("#itemPhoto").dispatchEvent(new Event("change", { bubbles: true }));
 });
 
 search?.addEventListener("input", render);
+$("#dateFilter")?.addEventListener("change", render);
+$("#buildingFilter")?.addEventListener("input", render);
 $("#categoryFilter")?.addEventListener("change", (event) => {
   categoryFilter = event.target.value;
   render();
